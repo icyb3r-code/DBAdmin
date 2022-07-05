@@ -1,8 +1,8 @@
 # Oracle 19c RAC
 
-Hi everyone, I will start complete guide of  Oracle RAC 19c lab setup. I have listed all the main points that I will cover during my up coming videos, so it can be easy for you to follow and understand each point, besides that those steps will save your time if you follow, so I put those point in a notepad as you can see here:
+Hi everyone, I will start complete guide of  Oracle RAC 19c lab setup. I have listed all the main points that I will cover during my up coming videos on my youtube channel, so it can be easy for you to follow and understand each point, besides that those steps will save your time if you follow, so I put those point in a notepad as you can see here:
 
-
+## TOC
 - [Oracle 19c RAC](#oracle-19c-rac)
   * [Requirements](#requirements)
   * [Setup VM Network](#setup-vm-network)
@@ -20,12 +20,18 @@ Hi everyone, I will start complete guide of  Oracle RAC 19c lab setup. I have li
     + [Make Files system](#make-files-system)
     + [Add to fstab](#add-to-fstab)
   * [Setup Prerequisites](#setup-prerequisites)
-    + [Prequisites installation](#prequisites-installation)
+    + [Prerequisites installation](#prerequisites-installation)
     + [Create Env Variables](#create-env-variables)
     + [Disable Unwanted Services](#disable-unwanted-services)
   * [Setup Cluster Network](#setup-cluster-network)
     + [Cluster Network](#cluster-network)
     + [Host file](#host-file)
+  * [Setup DNS](#setup-dns)
+    + [Install BIND9](#install-bind9)
+    + [Configure BIND](#configure-bind)
+    + [Forward Backward Zones](#forward-backward-zones)
+    + [Test DNS Configuration](#test-dns-configuration)
+    + [Use DNS](#use-dns)
   * [Clone VM](#clone-vm)
     + [Poweroff Node 1](#poweroff-node-1)
     + [Clone](#clone)
@@ -34,13 +40,7 @@ Hi everyone, I will start complete guide of  Oracle RAC 19c lab setup. I have li
     + [Create VSAN Disk](#create-vsan-disk)
     + [Add Disk on Both Nodes](#add-disk-on-both-nodes)
   * [Format Disks](#format-disks)
-  * [Setup DNS](#setup-dns)
-    + [Install BIND9](#install-bind9)
-    + [Configure BIND](#configure-bind)
-    + [Forward Backward Zones](#forward-backward-zones)
-    + [Test DNS Configuration](#test-dns-configuration)
-    + [Use DNS](#use-dns)
-  * [Setup GI](#setup-gi)
+  * [Setup GI + ASM AFD](#setup-gi---asm-afd)
     + [Upload files](#upload-files)
     + [Unzip files](#unzip-files)
     + [Prerequisites](#prerequisites)
@@ -59,10 +59,9 @@ Hi everyone, I will start complete guide of  Oracle RAC 19c lab setup. I have li
       - [Check](#check-1)
       - [Analyze](#analyze-1)
       - [Apply](#apply-1)
-	+  [Data Patch](#Data-Patch)
-	+ [Check Version](#Check-Version)
-+ 
-
+    + [Data Patch](#data-patch)
+    + [Check Version](#check-version)
+  * [Manage Cluster Services](#manage-cluster-services)
 
 
 ## Requirements 

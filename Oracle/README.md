@@ -10,7 +10,7 @@ Index for Oracle topics:
 *  [oracle 19c database with ASM](Contents/Oracle19c_with_ASM/README.md)
 *  [Oracle 19c TDE](Contents/Oracle19c_TDE/README.md)
 *  [Oracle 19c Restart Change Hostname](Contents/Oracle19c_Restart_change_hostname/README.md)
-*  
+*  [Oracle 19c RAC Setup On Oracle Linux 8.5](Contents/Oracle19c_RAC_on_OEL8.5/README.md)
 
  
 
