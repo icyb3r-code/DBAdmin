@@ -13,11 +13,9 @@ sudo hostnamectl set-hostname ole9-19c
 # Check if the network has a static IP 
 ip a 
 
-
 # add hostname and ip to hosts file, IP in this lab  change it to yours 
 sudo vim /etc/hosts
 10.10.110.129	ole9-19c
-
 
 # change selinux
 cat /etc/selinux/config
@@ -113,8 +111,6 @@ ORACLE_DATA_LOCATION=/opt/oracle/oradata
 
 # EM_EXPRESS_PORT: Oracle EM Express listener
 EM_EXPRESS_PORT=5500
-
-
 
 # You can proceed with the default configuration by running this command 
 sudo /etc/init.d/oracledb_ORCLCDB-19c configure
@@ -271,15 +267,31 @@ select instance_name, host_name, version, startup_time from v$instance;
 ```bash
 # login using oracle 
 
+# remove databases that is created on the system
 dbca
+
+# remove created listeners 
 netca
+
+# export this before run deinstall script 
 export CV_ASSUME_DISTID=OEL7.9
+
+# deinstall as oracle user 
 /opt/oracle/product/19c/dbhome_1/deinstall/deinstall
+
+# remove oracle database 19c rpm package 
 sudo dnf remove -y oracle-database-ee-19c.x86_64
+
+# if you want to remove completely the oracle from the system
 sudo dnf remove -y oracle-database-preinstall-19c.x86_64
+
+# Disable the service which created by us earlier 
 systemctl disable DEMOCDB@oracledb
+
+# remove files create by us earlier 
 rm /usr/lib/systemd/system/DEMOCDB@oracledb.service
 rm /etc/sysconfig/oracledb_DEMOCDB-19c.conf
+rm /etc/sysconfig/DEMOCDB.oracledbenv
 rm /etc/init.d/oracledb_DEMOCDB-19c
 ```
 
@@ -287,7 +299,9 @@ rm /etc/init.d/oracledb_DEMOCDB-19c
 ## Error
 
 
-Dnf Remove to overcome the below error you need to remove the home by using deinstall script 
+**Dnf Remove** 
+
+to overcome the below error you need to remove the home by using deinstall script 
 
 ![](attachments/Pasted%20image%2020240324203316.png)
 
@@ -327,7 +341,7 @@ Error: Transaction failed
 ```
 
 
-Deinstall 
+**Deinstall** 
 
 To overcome below error you need to export this environment variable `export CV_ASSUME_DISTID=OEL7.9` to terminal before run the deinstall script 
 
