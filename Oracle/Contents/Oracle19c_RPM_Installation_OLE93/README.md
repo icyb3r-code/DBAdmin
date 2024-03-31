@@ -89,6 +89,8 @@ rm oracle-database-ee-19c-1.0-1.x86_64.rpm
 ### Default configuration 
 # content of /etc/init.d/oracledb_DEMOCDB-19c
 
+less /etc/init.d/oracledb_DEMOCDB-19c
+
 export ORACLE_HOME=/opt/oracle/product/19c/dbhome_1 
 
 export ORACLE_VERSION=19c 
@@ -102,6 +104,7 @@ export CREATE_AS_CDB=true
 
 # below is the content of /etc/sysconfig/oracledb_ORCLCDB-19c
 #Oracle data location.
+less /etc/sysconfig/oracledb_ORCLCDB-19c
 
 # LISTENER_PORT: Database listener
 LISTENER_PORT=1521
@@ -117,6 +120,22 @@ sudo /etc/init.d/oracledb_ORCLCDB-19c configure
 
 ```
 
+##  Set Environment Variables - Default Conf
+
+```bash
+# set a password for oracle user 
+sudo passwd oracle
+
+# login to oracle user and add below to bash profile
+su - oracle
+vim ~/.bash_profile
+# add to the end
+umask 022
+export ORACLE_SID=ORCLCDB
+export ORACLE_BASE=/opt/oracle
+export ORACLE_HOME=/opt/oracle/product/19c/dbhome_1
+export PATH=$PATH:$ORACLE_HOME/bin
+```
 ### Custom Config
 
 ```bash
@@ -187,7 +206,7 @@ cat oracledb_DEMOCDB-19c.conf
 
 ```
 
-##  Set Environment Variables 
+##  Set Environment Variables - Custom Conf
 
 ```bash
 # set a password for oracle user 
@@ -202,9 +221,6 @@ export ORACLE_SID=DEMOCDB
 export ORACLE_BASE=/opt/oracle
 export ORACLE_HOME=/opt/oracle/product/19c/dbhome_1
 export PATH=$PATH:$ORACLE_HOME/bin
-
-
-
 ```
 
 ## Create Systemd Service 
