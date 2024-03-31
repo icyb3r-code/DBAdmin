@@ -80,9 +80,8 @@ You can clean up the rpm file after the installation by deleting the rpm package
 rm oracle-database-ee-19c-1.0-1.x86_64.rpm
 ```
 
-## Configure Oracle database 19c 
 
-### Default Config
+## Create database - Default Config
 
 ```bash
 
@@ -120,7 +119,7 @@ sudo /etc/init.d/oracledb_ORCLCDB-19c configure
 
 ```
 
-##  Set Environment Variables - Default Conf
+##  Set Env Variables - Default Conf
 
 ```bash
 # set a password for oracle user 
@@ -136,7 +135,7 @@ export ORACLE_BASE=/opt/oracle
 export ORACLE_HOME=/opt/oracle/product/19c/dbhome_1
 export PATH=$PATH:$ORACLE_HOME/bin
 ```
-### Custom Config
+## Create database - Custom Config
 
 ```bash
 # Keep in your mind below details, while you follow up below next steps 
@@ -206,7 +205,7 @@ cat oracledb_DEMOCDB-19c.conf
 
 ```
 
-##  Set Environment Variables - Custom Conf
+##  Set Env Variables - Custom Conf
 
 ```bash
 # set a password for oracle user 
