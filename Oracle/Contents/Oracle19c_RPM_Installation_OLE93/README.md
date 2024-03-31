@@ -135,6 +135,71 @@ export ORACLE_BASE=/opt/oracle
 export ORACLE_HOME=/opt/oracle/product/19c/dbhome_1
 export PATH=$PATH:$ORACLE_HOME/bin
 ```
+
+
+
+## Create Systemd Service - Custom Database
+
+```bash
+# login to root
+sudo -i
+
+# edit oratab file 
+vim /etc/oratab
+# last line : change N to Y
+ORCLCDB:/opt/oracle/product/19c/dbhome_1:Y
+
+vim /etc/sysconfig/ORCLCDB.oracledbenv
+# create new : define environment variables
+
+ORACLE_BASE=/opt/oracle/
+ORACLE_HOME=/opt/oracle/product/19c/dbhome_1
+ORACLE_SID=ORCLCDB
+
+# configure database service
+
+vim /usr/lib/systemd/system/ORCLCDB@oracledb.service
+# this is an example, modify for free
+
+[Unit]
+Description=Oracle Database 19c service
+After=network.target
+
+[Service]
+Type=forking
+EnvironmentFile=/etc/sysconfig/ORCLCDB.oracledbenv
+ExecStart=/opt/oracle/product/19c/dbhome_1/bin/dbstart $ORACLE_HOME
+ExecStop=/opt/oracle/product/19c/dbhome_1/bin/dbshut $ORACLE_HOME
+User=oracle
+
+[Install]
+WantedBy=multi-user.target
+
+
+# enable and start the service 
+systemctl daemon-reload
+
+systemctl enable ORCLCDB@oracledb 
+systemctl start ORCLCDB@oracledb
+systemctl status ORCLCDB@oracledb
+# to stop 
+systemctl stop ORCLCDB@oracledb
+systemctl status ORCLCDB@oracledb
+# access oracle user 
+su - oracle
+
+# access sql plus 
+sqlplus / as sysdba 
+> show pdbs 
+# if pluggaple database not opened 
+alter pluggable database ORCLPDB1 open;
+
+# check the CDB 
+col instance_name for a15
+col host_name for a25
+select instance_name, host_name, version, startup_time from v$instance; 
+```
+
 ## Create database - Custom Config
 
 ```bash
@@ -222,7 +287,7 @@ export ORACLE_HOME=/opt/oracle/product/19c/dbhome_1
 export PATH=$PATH:$ORACLE_HOME/bin
 ```
 
-## Create Systemd Service 
+## Create Systemd Service - Custom Database
 
 ```bash
 # login to root
@@ -266,12 +331,19 @@ systemctl daemon-reload
 systemctl enable DEMOCDB@oracledb 
 systemctl start DEMOCDB@oracledb
 systemctl status DEMOCDB@oracledb
-systemctl start DEMOCDB@oracledb
+# to stop 
+systemctl stop DEMOCDB@oracledb
+systemctl status DEMOCDB@oracledb
+# access oracle user 
+su - oracle
 
-
-
+# access sql plus 
+sqlplus / as sysdba 
+> show pdbs 
+# if pluggaple database not opened 
 alter pluggable database DEMOPDB1 open;
 
+# check the CDB 
 col instance_name for a15
 col host_name for a25
 select instance_name, host_name, version, startup_time from v$instance; 
