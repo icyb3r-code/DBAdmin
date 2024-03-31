@@ -348,7 +348,7 @@ Click Fix & Check Again
 
 Click OK
 
-![image-20210318130631619](Oracle19c_With_ASM.assets/image-20210318130631619.png)
+![image-20210318130631619](Oracle19c_With_ASM.assets/)
 
 Ignore if the other Unfixed issues then Next 
 
@@ -364,29 +364,29 @@ The installation process will start here
 
 It will ask you to run the two scripts as root.
 
-![image-20210522100053712](Oracle19c_With_ASM.assets/image-20210522100053712.png)
+![image-20210522100053712](attachments/image-20210522100053712.png)
 
 fist script ran from script 
 
-![image-20210522100239683](Oracle19c_With_ASM.assets/image-20210522100239683.png)
+![image-20210522100239683](attachments/image-20210522100239683.png)
 
 
 
 the second script ran from root and it will take time to finished. 
 
-![image-20210522110156257](Oracle19c_With_ASM.assets/image-20210522110156257.png)
+![image-20210522110156257](attachments/image-20210522110156257.png)
 
 
 
-![image-20210522110242702](Oracle19c_With_ASM.assets/image-20210522110242702.png)
+![image-20210522110242702](attachments/image-20210522110242702.png)
 
 Once the both scripts finished successfully you can Press OK on the dialog and continue with the installation:
 
-![image-20210522110322791](Oracle19c_With_ASM.assets/image-20210522110322791.png)
+![image-20210522110322791](attachments/image-20210522110322791.png)
 
 close the windows 
 
-![image-20210522122215970](Oracle19c_With_ASM.assets/image-20210522122215970.png)
+![image-20210522122215970](attachments/image-20210522122215970.png)
 
 lets check the grid services 
 
@@ -412,15 +412,15 @@ Using mouse right click on the DIsk Groups then new windows will pop up
 
 Create Data Disk group
 
-![image-20210522190531532](Oracle19c_With_ASM.assets/image-20210522190531532.png)
+![image-20210522190531532](attachments/image-20210522190531532.png)
 
 Create FRA Disk Group
 
-![image-20210522190639624](Oracle19c_With_ASM.assets/image-20210522190639624.png)
+![image-20210522190639624](attachments/image-20210522190639624.png)
 
 At the end you should have like below screenshoot 
 
-![image-20210522191009066](Oracle19c_With_ASM.assets/image-20210522191009066.png)
+![image-20210522191009066](attachments/image-20210522191009066.png)
 
 check the cluster resource if the disk groups have the cluster services using below command:
 
@@ -454,21 +454,21 @@ export CV_ASSUME_DISTID=OEL7.6
 
 click install software only option then next 
 
-![image-20210522202916090](Oracle19c_With_ASM.assets/image-20210522202916090.png)
+![image-20210522202916090](attachments/image-20210522202916090.png)
 
 Single instance database installation 
 
-![image-20210522202958811](Oracle19c_With_ASM.assets/image-20210522202958811.png)
+![image-20210522202958811](attachments/image-20210522202958811.png)
 
 Enterprise Edition 
 
-![image-20210522203101063](Oracle19c_With_ASM.assets/image-20210522203101063.png)
+![image-20210522203101063](attachments/image-20210522203101063.png)
 
 
 
 check the oracle base and oracle home then click next 
 
-![image-20210522203250799](Oracle19c_With_ASM.assets/image-20210522203250799.png)
+![image-20210522203250799](attachments/image-20210522203250799.png)
 
 
 
@@ -476,11 +476,11 @@ check the oracle base and oracle home then click next
 
 Check the OS groups then next 
 
-![image-20210522203347599](Oracle19c_With_ASM.assets/image-20210522203347599.png)
+![image-20210522203347599](attachments/image-20210522203347599.png)
 
 Click press Ignore then next if there is any warnings otherwise Check the sammary and Click Install  
 
-![image-20210522203444162](Oracle19c_With_ASM.assets/image-20210522203444162.png)
+![image-20210522203444162](attachments/image-20210522203444162.png)
 
 
 
@@ -488,19 +488,19 @@ Click press Ignore then next if there is any warnings otherwise Check the sammar
 
 The Installation begin 
 
-![image-20210522203553559](Oracle19c_With_ASM.assets/image-20210522203553559.png)
+![image-20210522203553559](attachments/image-20210522203553559.png)
 
 ask us to run the root.sh as `root` user 
 
-![image-20210522203725396](Oracle19c_With_ASM.assets/image-20210522203725396.png)
+![image-20210522203725396](attachments/image-20210522203725396.png)
 
 Run the root.sh in the terminal as user 
 
-![image-20210522203847556](Oracle19c_With_ASM.assets/image-20210522203847556.png)
+![image-20210522203847556](attachments/image-20210522203847556.png)
 
 Press OK and then close the window
 
-![image-20210522203934597](Oracle19c_With_ASM.assets/image-20210522203934597.png)
+![image-20210522203934597](attachments/image-20210522203934597.png)
 
 ## Create database using dbca
 
@@ -512,27 +512,27 @@ dbca
 
 select create new database 
 
-![image-20210522204212498](Oracle19c_With_ASM.assets/image-20210522204212498.png)
+![image-20210522204212498](attachments/image-20210522204212498.png)
 
 Select Advance Mode then next 
 
-![image-20210522204256293](Oracle19c_With_ASM.assets/image-20210522204256293.png)
+![image-20210522204256293](attachments/image-20210522204256293.png)
 
 Select General Purpose or Transaction Processing 
 
-![image-20210522204338107](Oracle19c_With_ASM.assets/image-20210522204338107.png)
+![image-20210522204338107](attachments/image-20210522204338107.png)
 
  Fill the textboxes with the required data based on your need:
 
-![image-20210522204454133](Oracle19c_With_ASM.assets/image-20210522204454133.png)
+![image-20210522204454133](attachments/image-20210522204454133.png)
 
 Use ASM as database storage 
 
-![image-20210522204611045](Oracle19c_With_ASM.assets/image-20210522204611045.png)
+![image-20210522204611045](attachments/image-20210522204611045.png)
 
 Enable the FRA and select ASM as FRA storage
 
-![image-20210522204945557](Oracle19c_With_ASM.assets/image-20210522204945557.png)
+![image-20210522204945557](attachments/image-20210522204945557.png)
 
 
 
@@ -542,41 +542,41 @@ Enable the FRA and select ASM as FRA storage
 
 Click next 
 
-![image-20210522205040736](Oracle19c_With_ASM.assets/image-20210522205040736.png)
+![image-20210522205040736](attachments/image-20210522205040736.png)
 
 click next
 
-![image-20210522205120402](Oracle19c_With_ASM.assets/image-20210522205120402.png)
+![image-20210522205120402](attachments/image-20210522205120402.png)
 
 
 
 Fill the data and see below screenshoot:
 
-![image-20210522205423070](Oracle19c_With_ASM.assets/image-20210522205423070.png)
+![image-20210522205423070](attachments/image-20210522205423070.png)
 
 Deselect EM and click next:
 
-![image-20210522205503479](Oracle19c_With_ASM.assets/image-20210522205503479.png)
+![image-20210522205503479](attachments/image-20210522205503479.png)
 
 Fill the Password and click next 
 
-![image-20210522205605005](Oracle19c_With_ASM.assets/image-20210522205605005.png)
+![image-20210522205605005](attachments/image-20210522205605005.png)
 
 
 
 Create database and next 
 
-![image-20210522205657215](Oracle19c_With_ASM.assets/image-20210522205657215.png)
+![image-20210522205657215](attachments/image-20210522205657215.png)
 
 
 
 Check the summary and Finish 
 
-![image-20210522205752572](Oracle19c_With_ASM.assets/image-20210522205752572.png)
+![image-20210522205752572](attachments/image-20210522205752572.png)
 
 once finished we can close the windows 
 
-![image-20210522220123601](Oracle19c_With_ASM.assets/image-20210522220123601.png)
+![image-20210522220123601](attachments/image-20210522220123601.png)
 
 
 
@@ -689,7 +689,12 @@ using sqlplus again and make sure that you are on this location  `/home/oracle/D
 run backup for archive log files and change the tag `TAG='ARC_BACKUP_20210327'` for the next day 
 
 ```bash
-rman target / nocatalog <<RMANrun {allocate channel c1 device type disk format '/u02/backup/ARC1_%U';SQL "ALTER SYSTEM ARCHIVE LOG CURRENT";BACKUP ARCHIVELOG ALL NOT BACKED UP 1 TIMES TAG='ARC_BACKUP_20210327'  MAXSETSIZE 50M;DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 1 TIMES TO DEVICE TYPE DISK;}RMAN
+rman target / nocatalog <<RMAN
+run {allocate channel c1 device type disk format '/u02/backup/ARC1_%U';
+SQL "ALTER SYSTEM ARCHIVE LOG CURRENT";BACKUP ARCHIVELOG ALL NOT BACKED UP 1 TIMES TAG='ARC_BACKUP_20210327'  MAXSETSIZE 50M;
+DELETE NOPROMPT ARCHIVELOG ALL BACKED UP 1 TIMES TO DEVICE TYPE DISK;
+}
+RMAN
 ```
 
 
@@ -719,7 +724,12 @@ Using `dbca` we can delete the database from the system:
 * recover database
 
 ```bash
-restore archivelog all;crosscheck archivelog all;switch database to copy;catalog start with '+DATA';list backup of archivelog all;report schema 
+restore archivelog all;
+crosscheck archivelog all;
+switch database to copy;
+catalog start with '+DATA';
+list backup of archivelog all;
+report schema 
 ```
 
 Using grid user you need to create the below directory 
@@ -737,7 +747,15 @@ alter diskgroup DATA add directory '+DATA/PROD';alter diskgroup DATA add directo
 Once we finished we need to add database service to the cluster ware that will be managed through it:
 
 ```bash
-srvctl add database -d PROD -a DATA,FRA -o $ORACLE_HOME -p +DATA/PROD/spfilePROD.orasrvctl sart database -d prod srvctl status database -d prod# Listener status and services lsnrctl status lsnrctl services # inside the sqlplus we need to open the pluggable database sqlplus -s / as sysdba <<SQLFalter pluggable database prod1pdb open;SQLF
+srvctl add database -d PROD -a DATA,FRA -o $ORACLE_HOME -p +DATA/PROD/spfilePROD.orasrvctl sart database -d prod 
+srvctl status database -d prod
+# Listener status and services
+lsnrctl status 
+lsnrctl services
+# inside the sqlplus we need to open the pluggable database 
+sqlplus -s / as sysdba <<SQLF
+alter pluggable database prod1pdb open;
+SQLF
 ```
 
 **Netca**
@@ -749,13 +767,19 @@ create service name on the server to be able to connect to the prod1pdb pluggabl
 Using `oracle` user move to `/home/oracle/Documents` then user this command:
 
 ```sql
-sqlplus -s / as sysdba <<SQLFconnect hr/hr1234@prod1pdbselect * from emp;SQLF
+sqlplus -s / as sysdba <<SQLF
+connect hr/hr1234@prod1pdb
+select * from emp;
+SQLF
 ```
 
 
 
 ```bash
-# stop all resources crsctl stop resource -all# stop high availablity services crsctl stop has
+# stop all resources 
+crsctl stop resource -all
+# stop high availablity services 
+crsctl stop has
 ```
 
 

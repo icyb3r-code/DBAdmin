@@ -193,6 +193,27 @@ administer key management set keystore close identified by "password1" container
 select * from GV$ENCRYPTION_WALLET;
 ```
 
+> Note: Below the step to create a master key for the new PDB
+
+**Create PDB**
+
+```sql
+create pluggable database PDB2 admin user newpdbadmin identified by NewAdPW_12;
+alter pluggable database PDB2 open;
+
+select p.con_id, p.name, p.open_mode, ew.wrl_type, ew.wallet_type, ew.status 
+from v$pdbs p join v$encryption_wallet ew on (ew.con_id = p.con_id)
+where p.name = 'PDB2';
+
+```
+
+**Create MEK for New PDB**
+
+```sql
+alter session set container=pdb2;
+
+administer key management set key force keystore identified by MySysPW_12 with backup;
+```
 
 
 #### 4.2.1 TDE Table-space Encryption 
