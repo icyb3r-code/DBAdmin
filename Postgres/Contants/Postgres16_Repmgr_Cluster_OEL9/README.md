@@ -11,34 +11,48 @@ Requirements:
 *  RepMGR 16.
 * Oracle Linux 9 as Client 
 
-| Server     | IP           | PG_Port | VIP          | RO_Port | RW_Port |
-| ---------- | ------------ | ------- | ------------ | ------- | ------- |
-| oel9-pg1   | 10.10.200.10 | 5432    | 10.10.200.20 | 5001    | 5000    |
-| oel9-pg2   | 10.10.200.11 | 5432    | 10.10.200.20 | 5001    | 5000    |
-| oel9-pg3   | 10.10.200.12 | 5432    | 10.10.200.20 | 5001    | 5000    |
-| win_client | 10.10.200.30 | 5432    | N/A          | N/A     | N/A     |
+| Server  | IP           | PG_Port | VIP          | RO_Port | RW_Port |
+| ------- | ------------ | ------- | ------------ | ------- | ------- |
+| ol8-pg1 | 10.10.200.10 | 5432    | 10.10.200.20 | 5001    | 5000    |
+| ol8-pg2 | 10.10.200.11 | 5432    | 10.10.200.20 | 5001    | 5000    |
+| ol8-pg3 | 10.10.200.12 | 5432    | 10.10.200.20 | 5001    | 5000    |
 
 ![](attachments/Postgres_full_arch.gif)
 
-## Setup Hostname (ALL)
+## Prepare Nodes VMs
+
+### Create Virtualbox Node Install OL9 
+
+Follow this video link on my YouTube channel in order to create a VM and setup Oracle linux 9 server.
+
+### Clone OL9 
+Follow this video link on my YouTube channel in order to clone the VM to more 2 VM total 3 VMs. 
+
+### Setup Static IP (ALL)
+
+Follow the Youtube video link to assign Static IP address to 3 nodes.
+
+### Setup Hostname (ALL)
 
 Add the `hostname` you prefer using below command:
 
 ```bash
 # add hostname 
- sudo hostnamectl set-hostname oel9-pg1
- sudo hostnamectl set-hostname oel9-pg2
- sudo hostnamectl set-hostname oel9-pg3
+ sudo hostnamectl set-hostname ol8-pg1
+ sudo hostnamectl set-hostname ol8-pg2
+ sudo hostnamectl set-hostname ol8-pg3
 # add to entry to hosts file 
  cat /etc/hosts
- sudo echo '10.10.200.10    oel9-pg2' >> /etc/hosts
- sudo echo '10.10.200.11    oel9-pg1' >> /etc/hosts
- sudo echo '10.10.200.12    oel9-pg3' >> /etc/hosts
+ sudo echo '10.10.200.10    ol8-pg2' >> /etc/hosts
+ sudo echo '10.10.200.11    ol8-pg1' >> /etc/hosts
+ sudo echo '10.10.200.12    ol8-pg3' >> /etc/hosts
  cat /etc/hosts
 
 ```
 
+### Access Nodes using SSH
 
+Follow this video link on my YouTube channel in order to forward the ssh port to host OS. use any ssh client to access servers.
 ## Install & Configure PostgreSQL
 
 ### Install PostgreSQL (ALL)
@@ -128,10 +142,11 @@ vim  /lib/systemd/system/postgresql-16.service
 # Location of database directory
 Environment=PGDATA=/u01/pgdata/data
 
-## disable and enable service 
-systemctl disable postgresql-16
-# Dont enable this service to start automatically
-#systemctl enable postgresql-16
+# Enable the postgreSQL to startup automatically  
+systemctl enable postgresql-16
+
+# to enable and start in one command 
+systemctl enable --now postgresql-16
 
 # start service & check status 
 systemctl start postgresql-16.service
@@ -172,7 +187,8 @@ archive_command = '/bin/true'
 shared_preload_libraries = 'repmgr'
 wal_log_hints = on
 
-# start service dont enable the service
+# start service and enable the service
+sudo systemctl enable postgresql-16
 sudo systemctl start postgresql-16
 sudo systemctl status postgresql-16
 ```
@@ -265,8 +281,8 @@ You need to make sure that below parameters have correct value to do so you need
 ```bash
 vim /etc/repmgr/16/repmgr.conf
 node_id=1
-node_name=oel9-pg1
-conninfo='host=oel9-pg1 user=repmgr dbname=repmgr connect_timeout=2'
+node_name=ol8-pg1
+conninfo='host=ol8-pg1 user=repmgr dbname=repmgr connect_timeout=2'
 data_directory='/var/lib/pgsql/16/data'
 failover=automatic
 promote_command='repmgr -f /etc/repmgr/16/repmgr.conf standby promote'
@@ -278,8 +294,8 @@ follow_command='repmgr -f /etc/repmgr/16/repmgr.conf standby follow'
 ```bash
 vim /etc/repmgr/16/repmgr.conf
 node_id=1
-node_name='oel9-pg1'
-conninfo='host=oel9-pg1 port = 5432 user=repmgr dbname=repmgr connect_timeout=2'
+node_name='ol8-pg1'
+conninfo='host=ol8-pg1 port = 5432 user=repmgr dbname=repmgr connect_timeout=2'
 data_directory='/u01/pgdata/data' ## chamge this
 pg_bindir='/usr/pgsql-16/bin/'
 ssh_options='-q -o ConnectTimeout=10'
@@ -307,8 +323,8 @@ service_reload_command='sudo /usr/bin/systemctl reload postgresql-16.service'
 ```bash
 vim /etc/repmgr/16/repmgr.conf
 node_id=2
-node_name=oel9-pg2
-conninfo='host=oel9-pg2 user=repmgr dbname=repmgr connect_timeout=2'
+node_name=ol8-pg2
+conninfo='host=ol8-pg2 user=repmgr dbname=repmgr connect_timeout=2'
 data_directory='/u01/pg_data/data'
 failover=automatic
 promote_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby promote'
@@ -318,8 +334,8 @@ follow_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby f
 ```bash
 vim /etc/repmgr/16/repmgr.conf
 node_id=3
-node_name=oel9-pg3
-conninfo='host=oel9-pg3 user=repmgr dbname=repmgr connect_timeout=2'
+node_name=ol8-pg3
+conninfo='host=ol8-pg3 user=repmgr dbname=repmgr connect_timeout=2'
 data_directory='/u01/pg_data/data'
 failover=automatic
 promote_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby promote'
@@ -331,8 +347,8 @@ follow_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby f
 ```bash
 vim /etc/repmgr/16/repmgr.conf
 node_id=2
-node_name='oel9-pg2'
-conninfo='host=oel9-pg2 port = 5432 user=repmgr dbname=repmgr connect_timeout=2'
+node_name='ol8-pg2'
+conninfo='host=ol8-pg2 port = 5432 user=repmgr dbname=repmgr connect_timeout=2'
 data_directory='/u01/pgdata/data' ## chamge this
 pg_bindir='/usr/pgsql-16/bin/'
 ssh_options='-q -o ConnectTimeout=10'
@@ -356,8 +372,8 @@ service_reload_command='sudo /usr/bin/systemctl reload postgresql-16.service'
 ```bash
 vim /etc/repmgr/16/repmgr.conf
 node_id=3
-node_name='oel9-pg3'
-conninfo='host=oel9-pg3 port = 5432 user=repmgr dbname=repmgr connect_timeout=2'
+node_name='ol8-pg3'
+conninfo='host=ol8-pg3 port = 5432 user=repmgr dbname=repmgr connect_timeout=2'
 data_directory='/u01/pgdata/data' ## chamge this
 pg_bindir='/usr/pgsql-16/bin/'
 ssh_options='-q -o ConnectTimeout=10'
@@ -413,17 +429,17 @@ Output
 
 ```bash
 # try the dry run from standby node 
- sudo -u postgres /usr/pgsql-16/bin/repmgr -h oel9-pg1 -U repmgr -d repmgr standby clone --dry-run
+ sudo -u postgres /usr/pgsql-16/bin/repmgr -h ol8-pg1 -U repmgr -d repmgr standby clone --dry-run
 
 # you should revieved below message 
 INFO: all prerequisites for "standby clone" are met
 
 # clone the primary to standby server
-sudo -u postgres /usr/pgsql-16/bin/repmgr -h oel9-pg1 -U repmgr -d repmgr standby clone
+sudo -u postgres /usr/pgsql-16/bin/repmgr -h ol8-pg1 -U repmgr -d repmgr standby clone
 
 # the output 
 INFO: executing:
-  /usr/pgsql-16/bin/pg_basebackup -l "repmgr base backup"  -D /u01/pgdata/data -h oel9-pg1 -p 5432 -U repmgr -X stream
+  /usr/pgsql-16/bin/pg_basebackup -l "repmgr base backup"  -D /u01/pgdata/data -h ol8-pg1 -p 5432 -U repmgr -X stream
 NOTICE: standby clone (using pg_basebackup) complete
 NOTICE: you can now start your PostgreSQL server
 HINT: for example: sudo /usr/bin/systemctl start postgresql-16.service
@@ -433,8 +449,8 @@ HINT: after starting the server, you need to register this standby with "repmgr 
 Start Postgres service on standby server
 
 ```bash
-# start the service dont enable the service  
-# systemct enable postgresql-16
+# start the service and enable the service  
+systemct enable postgresql-16
 systemct start postgresql-16
 
 # register the standby 
@@ -442,7 +458,7 @@ su - postgres
 repmgr standby register
 
 # output 
-NOTICE: standby node "oel9-pg2" (ID: 2) successfully registered
+NOTICE: standby node "ol8-pg2" (ID: 2) successfully registered
 ```
 
 ### Passwordless SSH connectivity (ALL)
@@ -458,11 +474,11 @@ passwd postgres
 # use copy id  on all nodes 
 # node 1
 su - postgres
-ssh-copy-id postgres@oel9-pg2
+ssh-copy-id postgres@ol8-pg2
 
 # node 2 
 su - postgres
-ssh-copy-id postgres@oel9-pg1
+ssh-copy-id postgres@ol8-pg1
 
 # using root remove password
 passwd -d postgres
@@ -545,7 +561,7 @@ sudo systemctl stop postgresql-16
 
 ```bash
 # on old primary 
-repmgr node rejoin -d "host=oel9-pg1 port=5432 user=repmgr dbname=repmgr connect_timeout=2" --force-rewind --verbose --dry-run 
+repmgr node rejoin -d "host=ol8-pg1 port=5432 user=repmgr dbname=repmgr connect_timeout=2" --force-rewind --verbose --dry-run 
 ```
 
 ## Setup HAProxy  (ALL)
@@ -586,7 +602,7 @@ host    postgres        haproxy      10.10.200.0/24      trust
 
 ```bash
 # connect to haproxy user 
-psql -h oel9-pg1 -U haproxy -d postgres
+psql -h ol8-pg1 -U haproxy -d postgres
 ```
 
 To generate a HAProxy configuration file, you can check this GitHub Repo [link](https://github.com/gplv2/haproxy-postgresql) which allow you using python script to create a PostgreSQL HAProxy configuration automatically, below my HAProxy configuration feel free to edit and use it as well:
@@ -614,7 +630,7 @@ global
         ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
         ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
 
-        # Stuff for oel9-pg
+        # Stuff for ol8-pg
         maxconn 100
         external-check
         #insecure-fork-wanted
@@ -724,9 +740,9 @@ backend backend_readwrite
 
         default-server on-marked-down shutdown-sessions
 
-        server oel9-pg1 oel9-pg1:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
-        server oel9-pg2 oel9-pg2:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
-        server oel9-pg3 oel9-pg3:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
+        server ol8-pg1 ol8-pg1:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
+        server ol8-pg2 ol8-pg2:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
+        server ol8-pg3 ol8-pg3:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
 
 backend backend_readonly
         option tcp-check
@@ -740,7 +756,7 @@ backend backend_readonly
         tcp-check send-binary 7573657200               # "user"            ( 5 bytes )
         tcp-check send-binary 686170726f787900         # "haproxy"         ( 8 bytes )
         tcp-check send-binary 646174616261736500       # "database"        ( 9 bytes )
-        tcp-check send-binary 706f73746772657300       # "oel9-pg"        ( 9 bytes )
+        tcp-check send-binary 706f73746772657300       # "ol8-pg"        ( 9 bytes )
         tcp-check send-binary 00                       # terminator        ( 1 byte )
 
 # expect: Auth
@@ -794,9 +810,9 @@ backend backend_readonly
 
         default-server on-marked-down shutdown-sessions
 
-        server oel9-pg1 oel9-pg1:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
-        server oel9-pg2 oel9-pg2:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
-        server oel9-pg3 oel9-pg3:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
+        server ol8-pg1 ol8-pg1:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
+        server ol8-pg2 ol8-pg2:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
+        server ol8-pg3 ol8-pg3:5432 check inter 5000 fastinter 2000 downinter 5000 rise 2 fall 3
 
 ```
 
