@@ -19,6 +19,8 @@ Requirements:
 | ol9-br1  | 10.10.200.13 | 5432    | 10.10.200.20 | 5001    | 5000    |
 | Win-pg-Clnt | 10.10.200.14 | N/A     | N/A          | N/A     | N/A     |
 
+Below is the high level design for the PostgreSQL database cluster:
+
 ![](attachments/Postgres_full_arch.gif)
 
 This diagram shows what the network and the connections between the nodes look like:
