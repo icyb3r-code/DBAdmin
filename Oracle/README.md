@@ -12,6 +12,7 @@ Index for Oracle topics:
 *  [Oracle 19c Restart Change Hostname](Contents/Oracle19c_Restart_change_hostname/README.md)
 *  [Oracle 19c RAC Setup On Oracle Linux 8.5](Contents/Oracle19c_RAC_on_OEL8.5/README.md)
 * [Oracle_19_RPM_Based_Installation](./Contents/Oracle19c_RPM_Installation_OLE93/README.md)
+* [Oracle Wallet Configure TCP with SSL/TLS Connection](./Contents/Configure_TCP_with_SSL_TLS_DB_conn/README.md)
 
  
 

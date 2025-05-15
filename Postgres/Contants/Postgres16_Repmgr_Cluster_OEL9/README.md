@@ -1578,7 +1578,7 @@ BARMAN_CMD="/usr/bin/barman"
 SERVER_NAME="DemoBackup1"
 
 # Perform the backup
-$BARMAN_CMD backup $SERVER_NAME > $BACKUP_LOG 2>&1
+$BARMAN_CMD backup $SERVER_NAME --wait > $BACKUP_LOG 2>&1
 
 # Check if the backup was successful
 if [ $? -eq 0 ]; then
@@ -1604,6 +1604,11 @@ Pooling=false;Timeout=300;CommandTimeout=300;KeepAlive=300;Include Error Detail=
 ```bash
 barman recover --remote-ssh-command="ssh postgres@ol9-pg3" \
 DemoBackup1 --target-time "2024-08-29 11:00" /u01/pgdata/data
+```
+
+```bash
+barman recover --remote-ssh-command="ssh postgres@ol9-pg3" \
+DemoBackup1 BackupID /u01/pgdata/data
 ```
 
 # Create User

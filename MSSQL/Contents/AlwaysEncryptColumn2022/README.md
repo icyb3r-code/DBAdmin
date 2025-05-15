@@ -48,13 +48,14 @@ Summarize: the usage of Randomize type when you want to encypte small data such 
 limitation of the AE if it's implemented on SQL Server
 
 - Distributed Queries 
-- No Defaukt or check Constratints 
+- No Default or check Constratints 
 - No Partition Columns 
 - Columns Reference computed Columns
 - No Transactional/Merge Replication
 - Aggregations 
 - Columns with the Identity property
 - No Triggers 
+
 ## 6- Type Of Keys
 
 ### 6.1- Column Encryption Key 

@@ -308,5 +308,5 @@ Once the availability groups finish you can expand the group and check the confi
 
 ## 7- Monitor The AG Databases 
 
-
+===> TODO 
 
