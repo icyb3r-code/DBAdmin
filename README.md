@@ -11,4 +11,4 @@ Labs, manuals and notes for administering the databases below. Click a database 
 | [PostgreSQL](./Postgres/README.md) | PostgreSQL 16 HA with repmgr, HAProxy, Keepalived & Barman, EDB EPAS HA cluster with EFM & pgBouncer, best practices, EDB DBA training notes |
 | [MongoDB](./MongoDB/README.md) | MongoDB 5 basics, MongoDB 8.3 Enterprise replica set with Ops Manager 9.0 monitoring |
 | [ElasticSearch](./ElasticSearch/README.md) | Elasticsearch 9.5.2 installation and administration on Oracle Linux 9 |
-| [Cache DBs (Redis / KeyDB)](./CacheDBs/README.md) | Redis and KeyDB (no topics yet) |
+| [Cache DBs](./CacheDBs/README.md) | Redis and KeyDB KeyVal (no topics yet) |
