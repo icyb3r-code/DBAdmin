@@ -41,14 +41,14 @@ Most tutorials skip this part — but you shouldn’t. These pre-installation ch
 
 **Step 1: Update Windows Server**
 
-Open Windows Update and install all pending updates. Reboot if required. SQL Server setup can fail or behave unexpectedly on an unpatched OS.
+Open Windows Update and install all pending updates. Reboot if required. SQL Server setup can fail or behave unexpectedly on  unpatched OS.
 
 ```
 Start > Settings > Windows Update > Check for Updates
 ```
 **Step 2: Configure Windows Firewall**
 
-By default, SQL Server listens on TCP port 1433. We need to open this port so clients can connect.
+By default, SQL Server uses TCP port 1433 for the default instance, while the SQL Server Browser service listens on UDP port 1434. We need to allow both ports through Windows Firewall so remote clients can connect successfully.
 
 ```powershell
 New-NetFirewallRule -DisplayName "SQLServer default instance" -Direction Inbound -LocalPort 1433 -Protocol TCP -Action Allow
@@ -99,11 +99,7 @@ If you plan to use Windows Authentication for SQL Server administration in a non
 ```powershell
 $Password = ConvertTo-SecureString "Password123!" -AsPlainText -Force
 
-New-LocalUser `
-  -Name "sqladmin" `
-  -Password $Password `
-  -FullName "SQL Server Administrator" `
-  -PasswordNeverExpires
+New-LocalUser -Name "sqladmin" -Password $Password -FullName "SQL Server Administrator" -PasswordNeverExpires
 ```
 Add the user to the local Administrators group:
 

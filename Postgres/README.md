@@ -1,6 +1,6 @@
 # PostgreSQL
 
-Index and table of contents for the PostgreSQL topics in the [Contants](./Contants/) directory. Click a manual to open it, or click any section to jump straight to it.
+Index for the PostgreSQL Database topics in the [Contents](./Contents/) directory. Click a manual to open it.
 
 ## Index
 
