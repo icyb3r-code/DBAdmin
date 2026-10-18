@@ -1,6 +1,70 @@
 
 # EDB PostgreSQL Training Summary
 
+
+## Module 1
+
+### Introduction
+
+#### General Database Limits
+
+
+| Limit                 | Value                               |
+| --------------------- | ----------------------------------- |
+| Max Database Size     | Unlimited                           |
+| Max Table Size        | 32 TB                               |
+| Max Row Size          | 1.6 TB                              |
+| Max Field Size        | 1 GB                                |
+| Max Rows per Table    | Unlimited                           |
+| Max Columns Per Table | 250-1600 (Depending on column type) |
+| Max Index per Table   | Unlimited                           |
+
+#### Common Database Object Names 
+
+
+| Industry Term  | Postgres Term      |
+| -------------- | ------------------ |
+| Table or Index | Relation           |
+| Row            | Tuple              |
+| Column         | Field              |
+| Data Block     | Page (on Disk)     |
+| Page           | Buffer (in Memory) |
+
+## Module 2
+
+### Architecture
+
+![](attachments/Pasted%20image%2020250630160134.png)
+
+```sql
+-- to get the background process id for the running session
+select pg_backend_pid()
+
+```
+
+### Utility Processes 
+
+**Background writer**: write dirty blocks to disk 
+
+**WAL writer**: flush write-ahead log to disk.
+
+**checkpointer**: Automatically performs a checkpoint based on config parameters.
+
+**Autovacuum launcher**: start autovacuum worker as needed.
+
+**Autovacumm workers**: Recover free space for reuse.
+
+**logging collector**: routes log messages to syslog eventlog or log files.
+
+**Stats collector**: collects usage statistics by relation and block.
+
+**Archiver**: Archives write-ahead log files.
+
+**Logical replication Launcher**: Start logical replication apply process for logical replication.
+
+**Dbms_aq Launcher**: collect information for queuing functionality of advanced server 
+
+
 ## PostgreSQL Performance Tuning
 
 ### Parameter Tuning Part 1
