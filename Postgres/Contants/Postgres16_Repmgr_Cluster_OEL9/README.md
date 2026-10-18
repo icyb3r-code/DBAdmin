@@ -1,23 +1,27 @@
 # Setup Postgres Cluster (REPMGR)
 
 
-## Lab Overview 
+## Lab Overview
 
-This lab will help you to setup and configure a PostgreSQL 16.2, RepMGR 16, HAProxy and Keepalived  on three nodes, to reach the PostgreSQL database high availability.
+This lab will help you to setup and configure PostgreSQL 16, repmgr 5.x (`repmgr_16` package), HAProxy and Keepalived on three database nodes to reach PostgreSQL database high availability, plus a fourth node running Barman for backup and Point-In-Time Recovery.
 
 Requirements:
 * Oracle Linux 9 ISO [link](https://yum.oracle.com/oracle-linux-isos.html).
-* PostgreSQL 16.2.
-*  RepMGR 16.
-* Oracle Linux 9 as Client 
+* PostgreSQL 16 (this lab was built with 16.2; `dnf` installs the latest 16.x minor release unless you pin the version, e.g. `postgresql16-server-16.2`).
+* repmgr 5.x built for PostgreSQL 16 (`repmgr_16` package).
+* HAProxy & Keepalived.
+* Barman (backup server).
+* A client machine to test the connections (Windows in this lab).
 
-| Server      | IP           | PG_Port | VIP          | RO_Port | RW_Port |
-| ----------- | ------------ | ------- | ------------ | ------- | ------- |
-| ol9-pg1     | 10.10.200.10 | 5432    | 10.10.200.20 | 5001    | 5000    |
-| ol9-pg2     | 10.10.200.11 | 5432    | 10.10.200.20 | 5001    | 5000    |
-| ol9-pg3     | 10.10.200.12 | 5432    | 10.10.200.20 | 5001    | 5000    |
-| ol9-br1  | 10.10.200.13 | 5432    | 10.10.200.20 | 5001    | 5000    |
-| Win-pg-Clnt | 10.10.200.14 | N/A     | N/A          | N/A     | N/A     |
+| Server      | IP           | PG_Port | VIP          | RO_Port | RW_Port | Role                                      |
+| ----------- | ------------ | ------- | ------------ | ------- | ------- | ----------------------------------------- |
+| ol9-pg1     | 10.10.200.10 | 5432    | 10.10.200.20 | 5001    | 5000    | PostgreSQL (primary), HAProxy, Keepalived |
+| ol9-pg2     | 10.10.200.11 | 5432    | 10.10.200.20 | 5001    | 5000    | PostgreSQL (standby), HAProxy, Keepalived |
+| ol9-pg3     | 10.10.200.12 | 5432    | 10.10.200.20 | 5001    | 5000    | PostgreSQL (standby), HAProxy, Keepalived |
+| ol9-br1     | 10.10.200.13 | N/A     | N/A          | N/A     | N/A     | Barman backup server                      |
+| Win-pg-Clnt | 10.10.200.14 | N/A     | N/A          | N/A     | N/A     | Client                                    |
+
+The VIP `10.10.200.20` uses the hostname `ol9-pg-vip`.
 
 Below is the high level design for the PostgreSQL database cluster:
 
@@ -29,58 +33,69 @@ This diagram shows what the network and the connections between the nodes look l
 
 ## Prepare Nodes VMs
 
-### Create Virtualbox Node Install OL9 
+### Create Virtualbox Node Install OL9
 
-Follow this video link on my YouTube channel in order to create a VM and setup Oracle linux 9 server.
+Follow this video on my YouTube channel in order to create a VM and setup Oracle Linux 9 server: _TODO: add video link_.
 
-### Clone OL9 
-Follow this video link on my YouTube channel in order to clone the VM to more 2 VM total 3 VMs. 
+### Clone OL9
+Follow this video on my YouTube channel in order to clone the VM. You need 4 VMs in total (3 PostgreSQL nodes + 1 Barman node): _TODO: add video link_.
 
 ### Setup Static IP (ALL)
 
-Follow the Youtube video link to assign Static IP address to 3 nodes.
+Follow this video on my YouTube channel to assign a static IP address to all nodes (see the table above): _TODO: add video link_.
 
 ### Setup Hostname (ALL)
 
-Add the `hostname` you prefer using below command:
+Add the `hostname` you prefer using below command (run the matching command on each node):
 
 ```bash
-# add hostname 
- sudo hostnamectl set-hostname ol9-pg1
- sudo hostnamectl set-hostname ol9-pg2
- sudo hostnamectl set-hostname ol9-pg3
-# add to entry to hosts file 
- cat /etc/hosts
- sudo echo '10.10.200.10    ol9-pg2' >> /etc/hosts
- sudo echo '10.10.200.11    ol9-pg1' >> /etc/hosts
- sudo echo '10.10.200.12    ol9-pg3' >> /etc/hosts
- cat /etc/hosts
+# add hostname
+sudo hostnamectl set-hostname ol9-pg1   # on node 1
+sudo hostnamectl set-hostname ol9-pg2   # on node 2
+sudo hostnamectl set-hostname ol9-pg3   # on node 3
+sudo hostnamectl set-hostname ol9-br1   # on the barman node
 
+# add the entries to the hosts file (all nodes)
+# note: "sudo echo ... >> /etc/hosts" does not work, the redirect runs without sudo
+cat /etc/hosts
+echo '10.10.200.10    ol9-pg1'    | sudo tee -a /etc/hosts
+echo '10.10.200.11    ol9-pg2'    | sudo tee -a /etc/hosts
+echo '10.10.200.12    ol9-pg3'    | sudo tee -a /etc/hosts
+echo '10.10.200.13    ol9-br1'    | sudo tee -a /etc/hosts
+echo '10.10.200.20    ol9-pg-vip' | sudo tee -a /etc/hosts
+cat /etc/hosts
 ```
 
 ### Change Machine ID (Cloned Nodes)
 
+Every cloned VM (ol9-pg2, ol9-pg3 and ol9-br1) needs its own machine ID:
+
 ```bash
-## Node 2 
-[admin@ol9-pg2 ~]$
+## Node 2
 [admin@ol9-pg2 ~]$ sudo rm -f /etc/machine-id
-[admin@ol9-pg2 ~]$ sudo rm /var/lib/dbus/machine-id
+[admin@ol9-pg2 ~]$ sudo rm -f /var/lib/dbus/machine-id
 [admin@ol9-pg2 ~]$ sudo dbus-uuidgen --ensure=/etc/machine-id
 [admin@ol9-pg2 ~]$ dbus-uuidgen --get
 e5e36d58008875113832db1e665f558f
-[admin@ol9-pg2 ~]$
+[admin@ol9-pg2 ~]$ sudo reboot
 
 ## Node3
 [admin@ol9-pg3 ~]$ sudo rm -f /etc/machine-id
-[admin@ol9-pg3 ~]$ sudo rm /var/lib/dbus/machine-id
+[admin@ol9-pg3 ~]$ sudo rm -f /var/lib/dbus/machine-id
 [admin@ol9-pg3 ~]$ sudo dbus-uuidgen --ensure=/etc/machine-id
 [admin@ol9-pg3 ~]$ dbus-uuidgen --get
 2012976fe5fa19d95ffa08bd665f5596
-[admin@ol9-pg3 ~]$
+[admin@ol9-pg3 ~]$ sudo reboot
+
+## repeat the same steps on the barman node (ol9-br1)
 ```
+
 ### Access Nodes using SSH
 
-Follow this video link on my YouTube channel in order to forward the ssh port to host OS. use any ssh client to access servers.
+Follow this video on my YouTube channel in order to forward the ssh port to the host OS, then use any ssh client to access the servers: _TODO: add video link_.
+
+> If you use a VirtualBox NAT adapter for the ssh port forwarding, check which network interface holds the `10.10.200.x` address (`ip -br a`); you will need it later for the Keepalived configuration.
+
 ## Install & Configure PostgreSQL
 
 ### Install PostgreSQL (ALL)
@@ -105,43 +120,46 @@ chown -R postgres:postgres /u01
 chmod -R 700 /u01/pgdata
 ```
 
-### Edit the Postgres Systemd service (ALL)
+### Create Systemd Override for PostgreSQL (ALL)
+
+Do **not** edit the package unit file `/usr/lib/systemd/system/postgresql-16.service` directly. It belongs to the `postgresql16-server` package and is replaced every time you patch PostgreSQL (`dnf update`), which silently resets `PGDATA` back to the default `/var/lib/pgsql/16/data/` and the service no longer finds your data directory. Put the change in a systemd drop-in (override) file under `/etc/systemd/system/` instead; package updates never touch it.
 
 ```bash
-# Edit systemd service 
-vim  /lib/systemd/system/postgresql-16.service
-# or 
-systemctl edit --full postgresql-16
-systemctl daemon-reload 
-systemctl cat postgresql-16
-### edit this line 
+# create the drop-in directory and the override file
+sudo mkdir -p /etc/systemd/system/postgresql-16.service.d
+sudo tee /etc/systemd/system/postgresql-16.service.d/override.conf > /dev/null <<'EOF'
+[Service]
+# Location of database directory (survives package updates)
+Environment=PGDATA=/u01/pgdata/data
+EOF
 
-# Location of database directory
-Environment=PGDATA=/u01/pgdata/data/
+# or create the same file interactively (opens an editor on override.conf)
+# sudo systemctl edit postgresql-16
 
-# Enable the postgreSQL to startup automatically  
-systemctl enable postgresql-16
-
-# to enable and start in one command 
-systemctl enable --now postgresql-16
-
-# start service & check status 
-systemctl start postgresql-16.service
-systemctl status postgresql-16.service
+# reload systemd and verify the override is applied
+sudo systemctl daemon-reload
+systemctl cat postgresql-16                    # the override is listed after the package unit file
+systemctl show -p Environment postgresql-16    # must include PGDATA=/u01/pgdata/data
 ```
+
+> Do not start PostgreSQL on the standby nodes: their data directory must stay empty until `repmgr standby clone` fills it.
 
 ### Initialize Database (Primary Only)
 
-The `PGDATA` is an environment variable to set PostgreSQL data directory path location, in this setup the location path is `/u01/pgdata/data` 
+The `PGDATA` is an environment variable to set PostgreSQL data directory path location, in this setup the location path is `/u01/pgdata/data`. The `postgresql-16-setup` script reads `PGDATA` from the systemd service, so with the override above it initializes the new location:
 
 ```bash
 # only on primary initialize the database
-sudo PGDATA=/u01/pgdata/data /usr/pgsql-16/bin/postgresql-16-setup initdb 
+sudo /usr/pgsql-16/bin/postgresql-16-setup initdb
+
+# enable the service to start automatically and start it (primary only)
+sudo systemctl enable --now postgresql-16
+sudo systemctl status postgresql-16
 ```
 
-### Migrate Data to New Location (Primary Only)
+### Migrate Data to New Location (Optional, Primary Only)
 
-You can follow below steps to migrate initialized PostgreSQL with the default location to new location. If you are okay with the default location of PostgreSQL **you can skip this part**, below step by step data directory migration:
+This part is only needed if you already initialized PostgreSQL in the default location (`/var/lib/pgsql/16/data`) before creating the override. If you followed the previous steps, **skip this part**.
 
 **Get Data directory and Config file location (Primary Only)**:
 
@@ -162,10 +180,8 @@ postgres=# show data_directory;
 Stop the `postgresql-16` `systemd` service:
 
 ```bash
-# postgres stop service 
-systemctl start postgresql-16.service
-# if enabled you need to disable it
-systemctl disable postgresql-16.service
+# postgres stop service
+sudo systemctl stop postgresql-16.service
 ```
 
 **Move Data to New Location (Primary Only)**
@@ -173,37 +189,17 @@ systemctl disable postgresql-16.service
 ```bash
 su - postgres
 rsync -av /var/lib/pgsql/16/data/ /u01/pgdata/data
+exit
 ```
 
-**Add New Location To Config (Primary Only)**
+**Point the Service to the New Location (Primary Only)**
+
+Create the override file as described in [Create Systemd Override for PostgreSQL](#create-systemd-override-for-postgresql-all), then start the service:
 
 ```bash
-vim /u01/pgdata/data/postgresql.conf
-
-# add this line 
-data_directory = '/u01/pgdata/data'
-```
-
-**Edit the Postgres Systemd service (ALL)**
-
-```bash
-# Edit systemd service 
-vim  /lib/systemd/system/postgresql-16.service
-
-### edit this line 
-
-# Location of database directory
-Environment=PGDATA=/u01/pgdata/data
-
-# Enable the postgreSQL to startup automatically  
-systemctl enable postgresql-16
-
-# to enable and start in one command 
-systemctl enable --now postgresql-16
-
-# start service & check status 
-systemctl start postgresql-16.service
-systemctl status postgresql-16.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now postgresql-16.service
+sudo systemctl status postgresql-16.service
 ```
 
 ### Check Configuration Taken (Primary Only)
@@ -237,12 +233,11 @@ wal_level = 'replica' #  or 'logical'
 hot_standby = on
 archive_mode = on
 archive_command = '/bin/true'
-# shared_preload_libraries = 'repmgr'
-wal_log_hints = on
+# shared_preload_libraries = 'repmgr'  # enabled after installing repmgr (see "Enable repmgr Library")
+wal_log_hints = on                     # required by pg_rewind (repmgr node rejoin --force-rewind)
 
-# start service and enable the service
-sudo systemctl enable postgresql-16
-sudo systemctl start postgresql-16
+# restart the service to apply the changes (wal_level and archive_mode need a restart)
+sudo systemctl restart postgresql-16
 sudo systemctl status postgresql-16
 ```
 
@@ -274,41 +269,78 @@ firewall-cmd --list-ports
 ### Install RepMGR (ALL)
 
 ```bash
-# install replication manager 
+# install replication manager
 sudo dnf install -y repmgr_16
 ```
 
+### Create Systemd Override for repmgrd (ALL)
+
+Like PostgreSQL, the `/usr/lib/systemd/system/repmgr-16.service` unit file belongs to the `repmgr_16` package and is replaced every time you patch repmgr. Keep your customizations in a drop-in file so they survive the updates:
+
+```bash
+sudo mkdir -p /etc/systemd/system/repmgr-16.service.d
+sudo tee /etc/systemd/system/repmgr-16.service.d/override.conf > /dev/null <<'EOF'
+[Unit]
+# start repmgrd after the local PostgreSQL instance
+After=postgresql-16.service
+
+[Service]
+# repmgr configuration file used by repmgrd (survives package updates)
+Environment=REPMGRDCONF=/etc/repmgr/16/repmgr.conf
+# restart repmgrd automatically if it crashes
+Restart=on-failure
+RestartSec=5s
+EOF
+
+# reload systemd and verify the override is applied
+sudo systemctl daemon-reload
+systemctl cat repmgr-16
+systemctl show -p Environment repmgr-16    # must include REPMGRDCONF=/etc/repmgr/16/repmgr.conf
+```
+
+> The variable name must match the one used by `ExecStart` in the package unit file (`systemctl cat repmgr-16` shows `repmgrd -f ${REPMGRDCONF} ...`). Do not start repmgrd yet; it is started after all nodes are registered.
+
+### Enable repmgr Library (Primary Only)
+
+repmgrd needs the `repmgr` library preloaded by PostgreSQL. Now that `repmgr_16` is installed, uncomment the line in `postgresql.conf` and restart PostgreSQL (the standbys get the same `postgresql.conf` through `repmgr standby clone`):
+
+```bash
+sudo sed -i "s/^#\s*shared_preload_libraries.*/shared_preload_libraries = 'repmgr'/" /u01/pgdata/data/postgresql.conf
+grep shared_preload_libraries /u01/pgdata/data/postgresql.conf
+# shared_preload_libraries = 'repmgr'
+
+sudo systemctl restart postgresql-16
+```
 
 ### Create RepMGR User & Database (Primary Only)
 
 ```bash
 su - postgres
 createuser -s repmgr
-createdb repmgr -O repmgr 
+createdb repmgr -O repmgr
 
-# or need to be checked 
+# or using psql
 su - postgres
 psql -c "CREATE USER repmgr WITH SUPERUSER;"
-psql -c "CREATRE DATABASE repmgr OWNER repmgr"
+psql -c "CREATE DATABASE repmgr OWNER repmgr;"
 ```
 
 ### Edit PG_HBA File (Primary Only)
 
-Edit the `pg_hba.conf` configuration file: 
+Edit the `pg_hba.conf` configuration file. The file is read from top to bottom and the first matching line wins, so add these lines **above** the default entries (otherwise the default `local all all peer` line rejects the local `repmgr` connections):
 
 ```bash
 vim /u01/pgdata/data/pg_hba.conf
-# TYPE  DATABASE        USER            ADDRESS          METHOD
-local   replication     repmgr                              trust
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   replication     repmgr                                  trust
 host    replication     repmgr          10.10.200.0/24          trust
 host    replication     repmgr          127.0.0.1/32            trust
-local   repmgr          repmgr                              trust
+local   repmgr          repmgr                                  trust
 host    repmgr          repmgr          10.10.200.0/24          trust
 host    repmgr          repmgr          127.0.0.1/32            trust
-```
 
-```sql
-
+# reload PostgreSQL to apply the changes
+sudo systemctl reload postgresql-16
 ```
 
 ### Configure RepMGR (ALL)
@@ -326,7 +358,7 @@ You need to make sure that below parameters have correct value to do so you need
 * node_id
 * node_name
 * conninfo
-* data_direcotry
+* data_directory
 * pg_bindir
 * promote_command
 * follow_command
@@ -344,10 +376,10 @@ vim /etc/repmgr/16/repmgr.conf
 node_id=1
 node_name=ol9-pg1
 conninfo='host=ol9-pg1 user=repmgr dbname=repmgr connect_timeout=2'
-data_directory='/var/lib/pgsql/16/data'
+data_directory='/u01/pgdata/data'
 failover=automatic
-promote_command='repmgr -f /etc/repmgr/16/repmgr.conf standby promote'
-follow_command='repmgr -f /etc/repmgr/16/repmgr.conf standby follow'
+promote_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby promote'
+follow_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby follow --upstream-node-id=%n'
 ```
 
 **Advanced Config**:
@@ -357,7 +389,7 @@ vim /etc/repmgr/16/repmgr.conf
 node_id=1
 node_name='ol9-pg1'
 conninfo='host=ol9-pg1 port=5432 user=repmgr dbname=repmgr connect_timeout=2'
-data_directory='/u01/pgdata/data' ## chamge this
+data_directory='/u01/pgdata/data' ## change this to your data directory
 pg_bindir='/usr/pgsql-16/bin/'
 ssh_options='-q -o ConnectTimeout=10'
 failover=automatic
@@ -386,10 +418,10 @@ vim /etc/repmgr/16/repmgr.conf
 node_id=2
 node_name=ol9-pg2
 conninfo='host=ol9-pg2 user=repmgr dbname=repmgr connect_timeout=2'
-data_directory='/u01/pg_data/data'
+data_directory='/u01/pgdata/data'
 failover=automatic
 promote_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby promote'
-follow_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby follow'
+follow_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby follow --upstream-node-id=%n'
 ```
 
 ```bash
@@ -397,10 +429,10 @@ vim /etc/repmgr/16/repmgr.conf
 node_id=3
 node_name=ol9-pg3
 conninfo='host=ol9-pg3 user=repmgr dbname=repmgr connect_timeout=2'
-data_directory='/u01/pg_data/data'
+data_directory='/u01/pgdata/data'
 failover=automatic
 promote_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby promote'
-follow_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby follow'
+follow_command='/usr/pgsql-16/bin/repmgr -f /etc/repmgr/16/repmgr.conf standby follow --upstream-node-id=%n'
 ```
 
 **Advanced Config**:
@@ -410,7 +442,7 @@ vim /etc/repmgr/16/repmgr.conf
 node_id=2
 node_name='ol9-pg2'
 conninfo='host=ol9-pg2 port=5432 user=repmgr dbname=repmgr connect_timeout=2'
-data_directory='/u01/pgdata/data' ## chamge this
+data_directory='/u01/pgdata/data' ## change this to your data directory
 pg_bindir='/usr/pgsql-16/bin/'
 ssh_options='-q -o ConnectTimeout=10'
 failover=automatic
@@ -435,7 +467,7 @@ vim /etc/repmgr/16/repmgr.conf
 node_id=3
 node_name='ol9-pg3'
 conninfo='host=ol9-pg3 port=5432 user=repmgr dbname=repmgr connect_timeout=2'
-data_directory='/u01/pgdata/data' ## chamge this
+data_directory='/u01/pgdata/data' ## change this to your data directory
 pg_bindir='/usr/pgsql-16/bin/'
 ssh_options='-q -o ConnectTimeout=10'
 failover=automatic
@@ -492,7 +524,7 @@ Output
 # try the dry run from standby node 
  sudo -u postgres /usr/pgsql-16/bin/repmgr -h ol9-pg1 -U repmgr -d repmgr standby clone --dry-run
 
-# you should revieved below message 
+# you should receive below message 
 INFO: all prerequisites for "standby clone" are met
 
 # clone the primary to standby server
@@ -510,46 +542,52 @@ HINT: after starting the server, you need to register this standby with "repmgr 
 Start Postgres service on standby server
 
 ```bash
-# start the service and enable the service  
-systemct enable postgresql-16
-systemct start postgresql-16
+# start the service and enable the service
+sudo systemctl enable --now postgresql-16
 
-# register the standby 
+# register the standby
 su - postgres
 repmgr standby register
 
-# output 
+# output
 NOTICE: standby node "ol9-pg2" (ID: 2) successfully registered
 ```
 
 ### Passwordless SSH connectivity (ALL)
 
+Every node must reach every other node as `postgres` without a password (needed by `repmgr standby switchover --siblings-follow`):
+
 ```bash
-# all nodes create a ssh key 
+# all nodes create a ssh key
 su - postgres
 ssh-keygen -t ed25519
-vim /var/lib/pgsql/.ssh
+exit
 
-# using root user on all nodes 
+# using root user on all nodes: set a temporary password for ssh-copy-id
 passwd postgres
 
-# use copy id  on all nodes 
+# use copy id on all nodes (full mesh)
 # node 1
 su - postgres
 ssh-copy-id postgres@ol9-pg2
-
-# node 2 
-su - postgres
-ssh-copy-id postgres@ol9-pg1
-
-# node 3
-# node 2 
-su - postgres
 ssh-copy-id postgres@ol9-pg3
 
-# using root remove password
-passwd -d postgres
+# node 2
+su - postgres
+ssh-copy-id postgres@ol9-pg1
+ssh-copy-id postgres@ol9-pg3
 
+# node 3
+su - postgres
+ssh-copy-id postgres@ol9-pg1
+ssh-copy-id postgres@ol9-pg2
+
+# test from every node, it must not ask for a password
+ssh ol9-pg1 hostname; ssh ol9-pg2 hostname; ssh ol9-pg3 hostname
+
+# using root lock the password again (key based ssh keeps working)
+# do not use "passwd -d": an empty password may allow any local user to "su - postgres"
+passwd -l postgres
 ```
 
 ### Grant PostgreSQL Privilege to control services (ALL) 
@@ -576,7 +614,7 @@ postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl start repmgr-16.service, \
 # Not secure : add postgres to wheel group 
 sudo usermod -aG wheel postgres
 visudo
-##### comment and uncomment samilar to below editing
+##### comment and uncomment similar to below editing
 ## Allows people in group wheel to run all commands
 # %wheel        ALL=(ALL)       ALL
 
@@ -595,13 +633,40 @@ gpasswd -d postgres wheel
 
 ### Start RepMGR Service (ALL)
 
-```bash 
+```bash
 sudo systemctl enable --now repmgr-16
+systemctl status repmgr-16
 ```
 
-### RepMGR Commands 
+### Patching PostgreSQL & RepMGR (ALL)
 
-You can find all the commands under this [link](https://www.repmgr.org/docs/5.3/index.html)
+Because the custom settings (`PGDATA`, `REPMGRDCONF`, ...) live in drop-in files under `/etc/systemd/system/`, a `dnf update` of `postgresql16*` or `repmgr_16` replaces the package unit files but keeps your overrides. Patch one node at a time (standbys first, then switchover and patch the old primary) and verify the overrides after each update:
+
+```bash
+# pause automatic failover during the maintenance (as postgres, from any node)
+repmgr service pause
+
+# patch the node
+sudo dnf update -y 'postgresql16*' repmgr_16
+
+# make systemd load the new unit files and check the overrides are still applied
+sudo systemctl daemon-reload
+systemd-delta --type=extended | grep -E 'postgresql-16|repmgr-16'
+systemctl show -p Environment postgresql-16   # must include PGDATA=/u01/pgdata/data
+systemctl show -p Environment repmgr-16       # must include REPMGRDCONF=/etc/repmgr/16/repmgr.conf
+
+# restart the services on the patched node
+sudo systemctl restart postgresql-16
+sudo systemctl restart repmgr-16
+
+# check the cluster, then resume automatic failover
+repmgr cluster show
+repmgr service unpause
+```
+
+### RepMGR Commands
+
+You can find all the commands under this [link](https://www.repmgr.org/docs/current/index.html)
 
 ![](attachments/Pasted%20image%2020240502003917.png)
 
@@ -637,7 +702,7 @@ dropdb testdb
 tail -f /var/log/repmgr/repmgr.log
 
 # from standby server or node 
-# --sbiligs-follow if you have more than on standby
+# --siblings-follow if you have more than one standby
 repmgr standby switchover --siblings-follow --dry-run 
 
 ```
@@ -659,10 +724,15 @@ sudo systemctl stop postgresql-16
 ### Test Rejoin Failed Node
 
 ```bash
-# on old primary
-# wal_log_hints = on
-# make sure the host=ol9-pg1 is the new primary
-repmgr node rejoin -d "host=ol9-pg1 port=5432 user=repmgr dbname=repmgr connect_timeout=2" --force-rewind --verbose --dry-run 
+# on the old (failed) primary, e.g. ol9-pg1 after ol9-pg2 was promoted
+# PostgreSQL must be stopped on this node; --force-rewind needs wal_log_hints = on
+sudo systemctl stop postgresql-16
+
+# host= must point to the NEW primary (check it with: repmgr cluster show)
+repmgr node rejoin -d "host=ol9-pg2 port=5432 user=repmgr dbname=repmgr connect_timeout=2" --force-rewind --verbose --dry-run
+
+# if the dry run is OK, run it without --dry-run
+repmgr node rejoin -d "host=ol9-pg2 port=5432 user=repmgr dbname=repmgr connect_timeout=2" --force-rewind --verbose
 ```
 
 ## Setup HAProxy  (ALL)
@@ -680,10 +750,10 @@ repmgr node rejoin -d "host=ol9-pg1 port=5432 user=repmgr dbname=repmgr connect_
 sudo dnf install haproxy
 ```
 
-Install the `postgresql-16` if you are setup HAProxy service not on PostgreSQL servers:
+Install the PostgreSQL client package if you are setting up HAProxy on servers other than the PostgreSQL servers:
 
 ```bash
-sudo dnf install postgresql-16
+sudo dnf install -y postgresql16
 ```
 
 ### Configure HAProxy (ALL)
@@ -704,13 +774,24 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO haproxy;
 GRANT CONNECT ON DATABASE postgres TO haproxy;
 ```
 
-```bash 
-/u01/pgdata/data/pg_hba.conf
-host    postgres        haproxy      10.10.200.0/24      trust
+Add the `haproxy` user to `pg_hba.conf` on the primary (above the default entries). The HAProxy health check below expects `trust` authentication:
+
+```bash
+vim /u01/pgdata/data/pg_hba.conf
+host    postgres        haproxy         10.10.200.0/24          trust
+
+# copy pg_hba.conf to the standby nodes (they were cloned before this change), as postgres
+scp /u01/pgdata/data/pg_hba.conf ol9-pg2:/u01/pgdata/data/pg_hba.conf
+scp /u01/pgdata/data/pg_hba.conf ol9-pg3:/u01/pgdata/data/pg_hba.conf
+
+# reload PostgreSQL on all nodes
+sudo systemctl reload postgresql-16.service
+ssh ol9-pg2 sudo systemctl reload postgresql-16.service
+ssh ol9-pg3 sudo systemctl reload postgresql-16.service
 ```
 
 ```bash
-# connect to haproxy user 
+# connect to haproxy user
 psql -h ol9-pg1 -U haproxy -d postgres
 ```
 
@@ -741,8 +822,6 @@ global
 
         # Stuff for ol9-pg
         maxconn 100
-        external-check
-        #insecure-fork-wanted
 
 defaults
         log     global
@@ -750,8 +829,8 @@ defaults
         retries 2
         option  dontlognull
         timeout connect 4s
-        timeout client  50000
-        timeout server  50000
+        timeout client  30m
+        timeout server  30m
         timeout check 5s
 #        errorfile 400 /etc/haproxy/errors/400.http
 #        errorfile 403 /etc/haproxy/errors/403.http
@@ -838,7 +917,7 @@ backend backend_readwrite
 # "t" means node in standby mode (read-only)  74h
 #
         tcp-check expect binary 44                     # data row packet
-        tcp-check expect binary 0000000b               # packet lenght: 11 (0x0b)
+        tcp-check expect binary 0000000b               # packet length: 11 (0x0b)
         tcp-check expect binary 0001                   # field count: 1
         tcp-check expect binary 00000001               # column length in bytes: 1
         tcp-check expect binary 66                     # column data, "f"
@@ -857,8 +936,8 @@ backend backend_readonly
         option tcp-check
         tcp-check connect
 
-# user: pgc
-# database: template1
+# user: haproxy
+# database: postgres
 #
         tcp-check send-binary 00000028                 # packet length     ( 4 bytes )
         tcp-check send-binary 00030000                 # protocol version  ( 4 bytes )
@@ -908,7 +987,7 @@ backend backend_readonly
 # "t" means node in standby mode (read-only)  74h
 #
         tcp-check expect binary 44                     # data row packet
-        tcp-check expect binary 0000000b               # packet lenght: 11 (0x0b)
+        tcp-check expect binary 0000000b               # packet length: 11 (0x0b)
         tcp-check expect binary 0001                   # field count: 1
         tcp-check expect binary 00000001               # column length in bytes: 1
         tcp-check expect binary 74                     # column data, "t"
@@ -925,27 +1004,33 @@ backend backend_readonly
 
 ```
 
-### Set SELinux to Permissive or Disable (ALL)
+### Configure SELinux for HAProxy (ALL)
 
 ```bash
-# change the selinux configuration
+# Option 1 (recommended): keep SELinux enforcing and allow HAProxy to bind/connect to any port
+sudo setsebool -P haproxy_connect_any 1
+getsebool haproxy_connect_any
+
+# Option 2: set SELinux to permissive
 cat /etc/selinux/config
-
-sudo sed -i s/SELINUX=.*/SELINUX=permissive/g /etc/selinux/config
-
-setenforce 0
+sudo sed -i 's/^SELINUX=.*/SELINUX=permissive/' /etc/selinux/config
+sudo setenforce 0
 getenforce
 ```
 
-### Allow HAProxy on Firewall (ALL)
+### Allow HAProxy & Keepalived on Firewall (ALL)
 
 ```bash
-# need sudo or root user 
+# need sudo or root user
+# HAProxy stats, read-write and read-only ports
 firewall-cmd --add-port=7000/tcp --permanent --zone=public
 firewall-cmd --add-port=5000/tcp --permanent --zone=public
 firewall-cmd --add-port=5001/tcp --permanent --zone=public
+# Keepalived VRRP (IP protocol 112); without it every node takes the VIP (split-brain)
+firewall-cmd --add-rich-rule='rule protocol value="vrrp" accept' --permanent --zone=public
 firewall-cmd --reload
 firewall-cmd --list-ports
+firewall-cmd --list-rich-rules
 ```
 ### Enable & Start Service (ALL)
 
@@ -954,7 +1039,7 @@ systemctl enable --now haproxy
 systemctl status  haproxy
 ```
 
-http://127.0.0.1:7000
+Open the HAProxy stats page on any node, e.g. http://10.10.200.10:7000 (from the host machine, use port forwarding if you are using a VirtualBox NAT adapter).
 
 ## KeepAliveD
 
@@ -991,6 +1076,8 @@ We need to get the network details from all the nodes it will help us later on, 
 ip -br a 
 ```
 
+> The configuration below uses `enp0s3`; replace it with the interface that holds the `10.10.200.x` address on your nodes.
+
 Start editing the `keepalived` service using the `keepalived.conf` file.
 
 ```bash
@@ -1000,8 +1087,12 @@ vim /etc/keepalived/keepalived.conf
 ```bash
 # Virtual Router Redundancy Protocol (VRRP)
 # === Node 1 
-vrrp_script chk_haproxy {  
-	script "/usr/bin/killall -0 haproxy" # check if HAProxy is running  
+global_defs {
+	enable_script_security
+	script_user root
+}
+vrrp_script chk_haproxy {
+	script "/usr/bin/systemctl is-active --quiet haproxy" # check if HAProxy is running  
 	interval 2 # check every 2 second  
 	weight 4 # weight to influence master election  
 }  
@@ -1033,8 +1124,12 @@ vrrp_instance vi_pg1 {
 ```bash
 # Virtual Router Redundancy Protocol (VRRP)
 #=== Node 2
-vrrp_script chk_haproxy {  
-	script "/usr/bin/killall -0 haproxy" # check if HAProxy is running  
+global_defs {
+	enable_script_security
+	script_user root
+}
+vrrp_script chk_haproxy {
+	script "/usr/bin/systemctl is-active --quiet haproxy" # check if HAProxy is running  
 	interval 2 # check every 2 second  
 	weight 4 # weight to influence master election  
 }  
@@ -1067,8 +1162,12 @@ vrrp_instance vi_pg1 {
 ```bash
 
 #=== Node 3
-vrrp_script chk_haproxy {  
-	script "/usr/bin/killall -0 haproxy" # check if HAProxy is running  
+global_defs {
+	enable_script_security
+	script_user root
+}
+vrrp_script chk_haproxy {
+	script "/usr/bin/systemctl is-active --quiet haproxy" # check if HAProxy is running  
 	interval 2 # check every 2 second  
 	weight 4 # weight to influence master election  
 }  
@@ -1088,7 +1187,7 @@ vrrp_instance vi_pg1 {
 		auth_type PASS  
 		auth_pass Password  
 	}  
-	virtual_ipaddress{  
+	virtual_ipaddress {  
 		10.10.200.20/24  
 	}
 	track_script {  
@@ -1100,9 +1199,8 @@ vrrp_instance vi_pg1 {
 ### Test and start Keepalived
 
 ```bash
-sudo keepalived -t
-sudo systemctl enable --now keepalived # enable and start
-sudo systemctl start keepalived
+sudo keepalived -t                      # test the configuration
+sudo systemctl enable --now keepalived  # enable and start
 sudo systemctl status keepalived
 ```
 
@@ -1126,7 +1224,7 @@ This diagram shows how HAProxy and Keepalived are configured, so we need to perf
 
 ### Test Switchover Using RepMGR
 
-```
+```bash
 repmgr standby switchover --siblings-follow --dry-run 
 
 repmgr standby switchover --siblings-follow 
@@ -1143,35 +1241,36 @@ In this test the HAProxy is working fine on the three nodes, the test will be li
 cat /etc/hosts
 ```
 
-Create a test database
-
-```sql
------- using terminal 
-createuser -s -P TestUser
-createdb Testdb -O TestUser
-
------- using psql
--- Step 1: Create a new user
-CREATE USER TestUser WITH PASSWORD 'Password123';
-
--- Step 2: Create a new database (if needed)
-CREATE DATABASE TestDatabase;
-
--- Step 3: Grant connect privilege to the user on the new database
-GRANT CONNECT ON DATABASE TestDatabase TO TestUser;
-
--- Step 4: Grant usage on the public schema (optional)
-GRANT USAGE ON SCHEMA public TO TestUser;
-
--- Step 5: Grant all privileges on all tables in the public schema (optional)
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO TestUser;
-
-```
-
-add record to`pg_hba.conf` for the `testuser` and `testdb` database 
+Create a test user and database on the primary. Use lowercase names: PostgreSQL folds unquoted identifiers to lowercase, and `pg_hba.conf` matches names case-sensitively.
 
 ```bash
-host    Testdb        TestUser         10.10.200.0/24          scram-sha-256
+# using terminal (as postgres)
+createuser -P testuser
+createdb testdb -O testuser
+```
+
+```sql
+-- or using psql
+-- Step 1: Create a new user
+CREATE USER testuser WITH PASSWORD 'Password123';
+
+-- Step 2: Create a new database owned by the user
+CREATE DATABASE testdb OWNER testuser;
+
+-- Step 3: Connect to the new database (schema/table grants apply to the current database)
+\c testdb
+
+-- Step 4: Grant usage on the public schema (optional)
+GRANT USAGE ON SCHEMA public TO testuser;
+
+-- Step 5: Grant all privileges on all tables in the public schema (optional)
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO testuser;
+```
+
+add record to `pg_hba.conf` for the `testuser` and `testdb` database
+
+```bash
+host    testdb          testuser        10.10.200.0/24          scram-sha-256
 ```
 
 copy the `pg_hba.conf` to the other nodes:
@@ -1188,10 +1287,10 @@ Reload postgreSQL `systemd` service on all nodes:
 systemctl reload postgresql-16.service
 ```
 
-try to connect to `Testdb` using `TestUser` 
+try to connect to `testdb` using `testuser` 
 
 ```bash
-psql -h ol9-pg1 -U TestUser -d Testdb
+psql -h ol9-pg1 -U testuser -d testdb
 ```
 
 ```bash 
@@ -1278,13 +1377,21 @@ Before we start the `keepalived` testing, we need to know that `keepalived` reli
 
 
 ```bash
-# stop HAProxy on the Keepalived master node 
+# 1. find the current Keepalived master (the node that holds the VIP)
+ip -br a | grep 10.10.200.20
+
+# 2. watch keepalived on the backup nodes
+sudo journalctl -u keepalived -f
+
+# 3. stop HAProxy on the Keepalived master node
 sudo systemctl stop haproxy
 
-# check the keepalived if its failed to another keepalived backup server where haproxy is available there.
+# 4. the VIP moves to the backup node with the highest priority (ol9-pg2) within a few seconds
+ip -br a | grep 10.10.200.20      # run on ol9-pg2
+psql "host=10.10.200.20 port=5000 user=repmgr dbname=repmgr" -c "select inet_server_addr();"
 
-
-
+# 5. start HAProxy again, the VIP moves back to ol9-pg1 (higher priority)
+sudo systemctl start haproxy
 ```
 
 
@@ -1293,14 +1400,18 @@ sudo systemctl stop haproxy
 
 In this setup I will introduce you with a solution for Performing back up that will allow Point-In-Time Recovery using barman. This part of my documentation taken from this article [link](https://medium.com/@kiwiv/postgresql-replication-backup-with-repmgr-barman-a8098748b98c).
 
-There are several methods for backing a PostgreSQL database up. You can find more information at this [Link](https://www.postgresql.org/docs/10/static/backup.html) .
+There are several methods for backing a PostgreSQL database up. You can find more information at this [Link](https://www.postgresql.org/docs/16/backup.html) .
 
-- Backup using pg_dump or pgdump_all: this solution is the most simple of all but doesn’t perform well for large database. It also would not allow you to perform a fine grained backup and you will not be able to recover data that happened *after the backup*. If you backup using a cronjob every night at 4:00 AM, and an accident happen at 4:00 PM the same day, you would have lost 12 hours of data.
+- Backup using pg_dump or pg_dumpall: this solution is the most simple of all but doesn’t perform well for large database. It also would not allow you to perform a fine grained backup and you will not be able to recover data that happened *after the backup*. If you backup using a cronjob every night at 4:00 AM, and an accident happen at 4:00 PM the same day, you would have lost 12 hours of data.
 - In our case we are interested in **Continuous Archiving and Point-in-Time Recovery (PITR)** which would allow us to recover our database to any point in time. This is obviously a better solution than pg_dump but requires much more knowledge of PostgreSQL and more configuration. It also does not allow to fine tune the backup on a per database basis, the backup happens for the whole cluster and so is the recovery.
 
 ### Install Barman on Barman Server
 
 ```bash
+# PGDG repository (barman and the PostgreSQL 16 client come from it) and EPEL (Python dependencies)
+sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+sudo dnf install -y oracle-epel-release-el9
+sudo dnf -qy module disable postgresql
 sudo dnf -y install barman barman-cli postgresql16
 ```
 
@@ -1311,7 +1422,7 @@ Add the PostgreSQL binary directory to PATH in bash profile:
 cp /etc/skel/.bash_profile ~/
 
 # add below line 
-echo "export PATH=/usr/pgsql-16/bin:\$PATH" >> .bash_profile
+echo "export PATH=/usr/pgsql-16/bin:\$PATH" >> ~/.bash_profile
 
 # check the profile content 
 cat ~/.bash_profile
@@ -1322,45 +1433,54 @@ source ~/.bash_profile
 Change the backup Directory on the server to another location:
 
 ```bash
-mkdir -p /u02/backups
-chown -R barman:barman /u02/
+sudo mkdir -p /u02/backups
+sudo chown -R barman:barman /u02/
 
-vim /etc/barman.conf
+# edit the existing barman_home line (do not add a second one)
+sudo vim /etc/barman.conf
 barman_home = /u02/backups
 ```
 
 ### Add Entry to Host File \[ALL]
 
 ```bash
-# on Barman server using sudo or root user
-vim /etc/hosts
+# these entries were already added in the "Setup Hostname" step, verify them on all nodes
+cat /etc/hosts
 
 10.10.200.10    ol9-pg1
 10.10.200.11    ol9-pg2
 10.10.200.12    ol9-pg3
 10.10.200.13    ol9-br1
 10.10.200.20    ol9-pg-vip
-
-# on Postgres Nodes
-10.10.200.13    ol9-br1
 ```
 
 ### Configure Passwordless Connection \[ALL]
 
+Barman connects to the PostgreSQL nodes as `postgres` (`barman recover --remote-ssh-command`), and the PostgreSQL nodes connect to Barman as `barman` (`barman-wal-restore` / repmgr `barman_host`), so the keys are exchanged in both directions:
+
 ```bash
-# on barman server using barman user 
+# on barman server using barman user: create a key and show it
 ssh-keygen -t ed25519
+cat ~/.ssh/id_ed25519.pub
 
-# cat public id 
-cat .ssh/id_ed25519.pub
+# on each PostgreSQL node using postgres user: paste the barman public key
+vim ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 
-# on barman server using barman user 
-vim .ssh/authorized_keys
+# on each PostgreSQL node using postgres user: show the postgres public key
+cat ~/.ssh/id_ed25519.pub
 
-ssh postgres@ol9-pg
+# on barman server using barman user: paste the postgres public keys of the three nodes
+vim ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 
-ssh barman@ol9-br1
+# test from barman server (barman user)
+ssh postgres@ol9-pg1 hostname
+ssh postgres@ol9-pg2 hostname
+ssh postgres@ol9-pg3 hostname
 
+# test from every PostgreSQL node (postgres user)
+ssh barman@ol9-br1 hostname
 ```
 
 
@@ -1463,6 +1583,7 @@ description = "PostgreSQL for Demo Backup Backup Policy"
 conninfo = host=ol9-pg-vip port=5000 user=barman dbname=postgres
 streaming_conninfo = host=ol9-pg-vip port=5000 user=streaming_barman dbname=replication
 backup_directory = /u02/backups/demobackup1
+path_prefix = "/usr/pgsql-16/bin"
 backup_method = postgres
 streaming_archiver = on
 slot_name = barman_pg_demo1
@@ -1501,7 +1622,7 @@ barman check DemoBackup1
 # switch the wal to backup it 
 barman switch-wal --force --archive DemoBackup1
 
-# psql -h ol9-pg -U repmgr -d repmgr
+# psql -h ol9-pg-vip -p 5000 -U repmgr -d repmgr
  SELECT * FROM repmgr.nodes;
  SELECT * FROM pg_stat_replication;
 
@@ -1513,23 +1634,22 @@ barman list-backups DemoBackup1
 
 ### Configure RepMgr with Barman \[ALL]
 
-On three nodes you need to install `barman-cli`
+On three nodes you need to install `barman-cli` (it may need the EPEL repository: `sudo dnf install -y oracle-epel-release-el9`):
 
 ```bash
-sudo dnf install barman-cli
-sudo systemctl restart  repmgr-16.service
-systemctl status repmgr-16.service
+sudo dnf install -y barman-cli
 ```
 
+Then add the barman settings to `repmgr.conf` and restart repmgrd:
 
 ```bash
-# add below lines 
+# add below lines
 vim /etc/repmgr/16/repmgr.conf
 barman_host='barman@ol9-br1'
 barman_server='DemoBackup1'
 restore_command='/usr/bin/barman-wal-restore -U barman ol9-br1 DemoBackup1 %f %p'
 
-sudo systemctl reload  repmgr-16.service
+sudo systemctl restart repmgr-16.service
 systemctl status repmgr-16.service
 ```
 
@@ -1548,11 +1668,11 @@ sudo systemctl stop postgresql-16.service
 # from new primary check the status 
 repmgr cluster show
 
-# from failed primary
+# from failed primary (ol9-pg1), point to the new primary (e.g. ol9-pg2)
 repmgr -h ol9-pg2 -U  repmgr -d repmgr -F standby clone --dry-run
 
-# then force the clone from the barman server to recover
-repmgr -h ol9-pg3 -U  repmgr -d repmgr -F standby clone
+# then force the clone (repmgr restores from the barman server set in barman_host)
+repmgr -h ol9-pg2 -U  repmgr -d repmgr -F standby clone
 
 # start postgres
 sudo systemctl start postgresql-16.service
@@ -1567,13 +1687,17 @@ repmgr cluster show
 
 #### Crontab
 
-```bash
-vim DemoBackup1.sh
+Create the backup script as the `barman` user (home directory `/var/lib/barman`):
 
+```bash
+vim ~/DemoBackup1.sh
+```
+
+```bash
 #!/bin/bash
 
 # Define variables
-BACKUP_LOG="/var/log/barman/backup-$(date +\%F%H%M%S).log"
+BACKUP_LOG="/var/log/barman/backup-$(date +%F_%H%M%S).log"
 BARMAN_CMD="/usr/bin/barman"
 SERVER_NAME="DemoBackup1"
 
@@ -1582,46 +1706,70 @@ $BARMAN_CMD backup $SERVER_NAME --wait > $BACKUP_LOG 2>&1
 
 # Check if the backup was successful
 if [ $? -eq 0 ]; then
-  echo "$(date +\%F\ %T): Backup successful" >> $BACKUP_LOG
+  echo "$(date '+%F %T'): Backup successful" >> $BACKUP_LOG
 else
-  echo "$(date +\%F\ %T): Backup failed" >> $BACKUP_LOG
+  echo "$(date '+%F %T'): Backup failed" >> $BACKUP_LOG
 fi
+```
 
+Make it executable and schedule it in the `barman` user's crontab (every day at midnight):
 
-chmod +x DemoBackup1.sh
+```bash
+chmod +x ~/DemoBackup1.sh
 
-crontab -e 
+crontab -e
 
-0 0 * * * /path_of_script/DemoBackup1.sh
+0 0 * * * /var/lib/barman/DemoBackup1.sh
+```
 
-# ConnectionString
+#### Client Connection String
+
+Extra connection-string options used by the .NET (Npgsql) client in this lab:
+
+```text
 Pooling=false;Timeout=300;CommandTimeout=300;KeepAlive=300;Include Error Detail=True;
 ```
 
 
-### Point In Time Recovery 
+### Point In Time Recovery
+
+PITR replaces the data directory of the target node and starts a new timeline, so run it on a node that you removed from the repmgr cluster (`repmgr standby unregister`) or on a separate server. Stop PostgreSQL on the target node first:
 
 ```bash
+# on the target node (ol9-pg3)
+sudo systemctl stop postgresql-16
+```
+
+From the barman server as `barman` user (list the backup IDs with `barman list-backups DemoBackup1`):
+
+```bash
+# recover the latest backup up to a point in time
 barman recover --remote-ssh-command="ssh postgres@ol9-pg3" \
-DemoBackup1 --target-time "2024-08-29 11:00" /u01/pgdata/data
+--target-time "2024-08-29 11:00" DemoBackup1 latest /u01/pgdata/data
 ```
 
 ```bash
+# recover a specific backup
 barman recover --remote-ssh-command="ssh postgres@ol9-pg3" \
-DemoBackup1 BackupID /u01/pgdata/data
+DemoBackup1 <BackupID> /u01/pgdata/data
 ```
 
 # Create User
 
+The tablespace directory must exist and be owned by `postgres` on the primary **and on every standby** before you create the tablespace, otherwise WAL replay fails on the standbys:
+
 ```bash
-psql> create tablespace data_tbs location '/u01/pgts/';  
-psql> create user dbuser login superuser password 'dbuser123';  
-psql> create database db1 owner dbuser tablespace data_tbs;  
-psql> \c db1  
-psql> create schema authorization aiuser;
+# on all PostgreSQL nodes using root
+mkdir -p /u01/pgts
+chown postgres:postgres /u01/pgts
+chmod 700 /u01/pgts
 ```
 
-
-
-``
-
+```sql
+-- on the primary using psql
+create tablespace data_tbs location '/u01/pgts';
+create user dbuser login superuser password 'dbuser123';
+create database db1 owner dbuser tablespace data_tbs;
+\c db1
+create schema authorization dbuser;
+```
