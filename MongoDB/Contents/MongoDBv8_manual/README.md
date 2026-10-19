@@ -1,10 +1,11 @@
-# MongoDB 8.3 Enterprise 3-Node Replica Set (prd-rst) + Ops Manager 9.0 Monitoring - Oracle Linux 10.2 - No TLS
+# MongoDB 8.3 Enterprise Replica Set (prd-rst) - 3 HQ Nodes + 3 DR Nodes + Ops Manager 9.0 Monitoring - Oracle Linux 10.2 - No TLS
 
 **HOW TO READ THIS FILE**
 
 Every step says where to run it:
 
-- `ALL NODES` - run on hqmngodb01, hqmngodb02 and hqmngodb03
+- `ALL NODES` - run on hqmngodb01, hqmngodb02 and hqmngodb03 (and on drmngodb01, drmngodb02 and drmngodb03 when you build the DR site in STEP 32)
+- `DR NODES` - run on drmngodb01, drmngodb02 and drmngodb03 (STEP 32)
 - `hqmngodb01 ONLY` - run only on the first node
 - `PER NODE` - run on every node, but change the value at the top of the block (`MY_IP`)
 - `mongosh` blocks (marked **(mongosh)**) are pasted into the MongoDB shell, not into bash
@@ -15,17 +16,24 @@ Run all bash commands as root (`sudo -i`). Copy a whole block and paste it at th
 
 ```
 OS                : Oracle Linux 10.2 (Red Hat Compatible Kernel - NOT UEK)
-MongoDB           : Enterprise 8.3.13 (el10 packages) - all 3 nodes must run the same version
-Replica set name  : prd-rst  (lowercase - names are case-sensitive)
+MongoDB           : Enterprise 8.3.13 (el10 packages) - all 6 nodes (HQ and DR) must run the same version
+Replica set name  : prd-rst  (lowercase - names are case-sensitive) - ONE replica set across both sites
 Port              : 27017
 TLS               : NOT used. Authentication = keyFile (between nodes) + users (authorization enabled)
-Firewall          : firewalld ENABLED (port 27017 opened in STEP 4)
+Firewall          : firewalld ENABLED (port 27017 opened in STEP 4 on every node, HQ and DR)
 SELinux           : DISABLED (verified / disabled in STEP 3)
 Data volume       : /dev/mapper/mngovg-data mounted on /data (9.9 GB, XFS)
 
-Node 1  hqmngodb01  10.10.21.30  preferred primary (priority 2)
-Node 2  hqmngodb02  10.10.21.31  secondary (priority 1)
-Node 3  hqmngodb03  10.10.21.32  secondary (priority 1)
+HQ site (production)
+Node 1  hqmngodb01  10.10.21.30  preferred primary (priority 2, votes 1, tag dc:HQ)
+Node 2  hqmngodb02  10.10.21.31  secondary         (priority 1, votes 1, tag dc:HQ)
+Node 3  hqmngodb03  10.10.21.32  secondary         (priority 1, votes 1, tag dc:HQ)
+
+DR site (STEP 32) - replace the 10.10.22.x IPs with the real DR IPs everywhere in this file
+Node 4  drmngodb01  10.10.22.30  DR secondary      (priority 0, votes 1, tag dc:DR)
+Node 5  drmngodb02  10.10.22.31  DR secondary      (priority 0, votes 1, tag dc:DR)
+Node 6  drmngodb03  10.10.22.32  DR secondary      (priority 0, votes 0, tag dc:DR)
+
 OM      hqmngoom01  10.10.21.40  Ops Manager 9.0 + its Application Database (MongoDB 9.0) on the SAME server - monitoring and alerting only (STEPS 25-30). Replace 10.10.21.40 with the real IP.
 
 Folders: /data/mongodb/data (database files), /data/mongodb/keyfile (replica-set key file),
@@ -41,7 +49,7 @@ Folders: /data/mongodb/data (database files), /data/mongodb/keyfile (replica-set
 4. Without TLS, passwords and data travel unencrypted on the network. Keep port 27017 reachable only from networks you trust if you can restrict it later.
 5. Passwords below are placeholders (<ROOT_PASSWORD> etc). mongosh asks for them with passwordPrompt(), so they are never stored in a file.
 6. Read "Version and support validation" below BEFORE building. It lists what is officially supported and what is only an inference.
-7. STEPS 1-24 build the replica set. STEPS 25-30 build Ops Manager (monitoring and alerting only). STEP 31 is patching.
+7. STEPS 1-24 build the replica set at HQ. STEPS 25-30 build Ops Manager (monitoring and alerting only). STEP 31 is patching. STEP 32 joins the DR site (drmngodb01-03) to prd-rst and covers the DR switchover, DR activation and failback.
 
 ## Version and support validation
 
@@ -131,17 +139,16 @@ df -h /data
 
 **Run on:** `ALL NODES`
 
-Add the hosts (run once per node - do not append twice).
+Add the hosts of BOTH sites (HQ and DR), so every node can resolve every member. The loop adds only the names that are missing, so it is safe to run again.
 
 ```bash
-cat >> /etc/hosts <<'EOF'
-10.10.21.30     hqmngodb01
-10.10.21.31     hqmngodb02
-10.10.21.32     hqmngodb03
-EOF
+for e in "10.10.21.30     hqmngodb01" "10.10.21.31     hqmngodb02" "10.10.21.32     hqmngodb03" \
+         "10.10.22.30     drmngodb01" "10.10.22.31     drmngodb02" "10.10.22.32     drmngodb03"; do
+  grep -qw "${e##* }" /etc/hosts || echo "$e" >> /etc/hosts
+done
 ```
 
-Set the hostname. Change the name on each node (hqmngodb01 / hqmngodb02 / hqmngodb03).
+Set the hostname. Change the name on each node (hqmngodb01 / hqmngodb02 / hqmngodb03; drmngodb01 / drmngodb02 / drmngodb03 at DR).
 
 ```bash
 hostnamectl set-hostname hqmngodb01
@@ -150,7 +157,7 @@ hostnamectl set-hostname hqmngodb01
 Check name resolution.
 
 ```bash
-getent hosts hqmngodb01 hqmngodb02 hqmngodb03
+getent hosts hqmngodb01 hqmngodb02 hqmngodb03 drmngodb01 drmngodb02 drmngodb03
 ```
 
 Time sync: edit /etc/chrony.conf and set server <internal-ntp-ip> iburst then:
@@ -591,7 +598,7 @@ Connect locally on hqmngodb01. The "localhost exception" lets you create the fir
 mongosh --host localhost --port 27017
 ```
 
-Initiate the replica set. The _id MUST equal replSetName in mongod.conf (prd-rst, lowercase).
+Initiate the replica set. The _id MUST equal replSetName in mongod.conf (prd-rst, lowercase). The tag dc:HQ marks the site of each member; the backup (STEP 17) uses it to read from HQ only, and the DR members get dc:DR in STEP 32.
 
 **(mongosh)**
 
@@ -599,9 +606,9 @@ Initiate the replica set. The _id MUST equal replSetName in mongod.conf (prd-rst
 rs.initiate({
   _id: "prd-rst",
   members: [
-    { _id: 0, host: "hqmngodb01:27017", priority: 2 },
-    { _id: 1, host: "hqmngodb02:27017", priority: 1 },
-    { _id: 2, host: "hqmngodb03:27017", priority: 1 }
+    { _id: 0, host: "hqmngodb01:27017", priority: 2, tags: { dc: "HQ" } },
+    { _id: 1, host: "hqmngodb02:27017", priority: 1, tags: { dc: "HQ" } },
+    { _id: 2, host: "hqmngodb03:27017", priority: 1, tags: { dc: "HQ" } }
   ]
 })
 ```
@@ -704,6 +711,8 @@ source ~/.bash_profile
 
 Backups must go to SEPARATE storage - /data is only 9.9 GB. The script reads from a SECONDARY and keeps 7 days. Replace <BACKUP_PASSWORD> with the password of the backupAdmin user.
 
+The URI prefers an HQ secondary (readPreferenceTags=dc:HQ), so once the DR site is added (STEP 32) the dump is never pulled across the WAN. The second, empty readPreferenceTags= is the fallback: any secondary, if no HQ secondary is available.
+
 ```bash
 mkdir -p /backup
 echo 'MNG_PWD="<BACKUP_PASSWORD>"' > /root/.mongo_backup.env
@@ -717,7 +726,7 @@ cat > /usr/local/bin/mongo_backup.sh <<'EOF'
 source /root/.mongo_backup.env
 BACKUP_DIR=/backup
 STAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-URI="mongodb://hqmngodb01:27017,hqmngodb02:27017,hqmngodb03:27017/?replicaSet=prd-rst&readPreference=secondary&authSource=admin"
+URI="mongodb://hqmngodb01:27017,hqmngodb02:27017,hqmngodb03:27017/?replicaSet=prd-rst&readPreference=secondary&readPreferenceTags=dc:HQ&readPreferenceTags=&authSource=admin"
 
 mongodump --uri="$URI" --username=backupAdmin --password="$MNG_PWD" --archive=$BACKUP_DIR/mongofullbackup_$STAMP.dump --gzip 2> $BACKUP_DIR/mongofullbackup_$STAMP.log
 
@@ -768,7 +777,7 @@ mongorestore --uri="$RS_URI" --username=backupAdmin --password="$MNG_PWD" --arch
 
 Connect: mongosh-root (or the replica-set connection string from STEP 15).
 
-Members, health and priorities. Expected: 1 PRIMARY + 2 SECONDARY, health 1, priorities 2 / 1 / 1, votes 1 / 1 / 1.
+Members, health and priorities. Expected (HQ only): 1 PRIMARY + 2 SECONDARY, health 1, priorities 2 / 1 / 1, votes 1 / 1 / 1. After the DR site is added (STEP 32): 1 PRIMARY + 5 SECONDARY, priorities 2 / 1 / 1 / 0 / 0 / 0, votes 1 / 1 / 1 / 1 / 1 / 0.
 
 **(mongosh)**
 
@@ -811,7 +820,7 @@ getenforce
 cat /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
-What a healthy rs.status() shows: ok: 1; set: prd-rst; one member with stateStr PRIMARY and two SECONDARY; every member health: 1; votingMembersCount: 3, majorityVoteCount: 2, writeMajorityCount: 2; the same configVersion on all members; optime values equal or within a few seconds; syncSourceHost of the secondaries pointing at the primary; empty infoMessage and lastHeartbeatMessage.
+What a healthy rs.status() shows: ok: 1; set: prd-rst; one member with stateStr PRIMARY and two SECONDARY (five with the DR site); every member health: 1; votingMembersCount: 3, majorityVoteCount: 2, writeMajorityCount: 2 (with the DR site: 5, 3 and 3); the same configVersion on all members; optime values equal or within a few seconds; syncSourceHost of the secondaries pointing at the primary; empty infoMessage and lastHeartbeatMessage.
 
 ---
 
@@ -1102,6 +1111,14 @@ mongodb://<APP>-user:<PASSWORD>@hqmngodb01:27017,hqmngodb02:27017,hqmngodb03:270
 
 The replica set name is case-sensitive: replicaSet=prd-rst.
 
+With the DR site (STEP 32), list the DR nodes in the seed list too. The driver always writes to the primary wherever it is, so the same string keeps working after a DR activation (STEP 32.11) without changing the application:
+
+```bash
+mongodb://<APP>-user:<PASSWORD>@hqmngodb01:27017,hqmngodb02:27017,hqmngodb03:27017,drmngodb01:27017,drmngodb02:27017,drmngodb03:27017/<APP>DB?authSource=admin&replicaSet=prd-rst&w=majority&retryWrites=true
+```
+
+If the application reads from secondaries, add readPreferenceTags=dc:HQ so normal reads stay at HQ and do not cross the WAN.
+
 ---
 
 ## STEP 24 - Day-2 commands
@@ -1115,7 +1132,7 @@ tail -f /var/log/mongodb/mongod.log
 rpm -qa | grep -i mongo
 ```
 
-Patching: upgrade the secondaries first, then rs.stepDown(60) on the primary and upgrade it; keep all nodes on the same version. Raise the feature compatibility version only after ALL members are upgraded and validated.
+Patching: upgrade the DR nodes and the HQ secondaries first, then rs.stepDown(60) on the primary and upgrade it; keep all nodes (HQ and DR) on the same version (details in STEP 31). Raise the feature compatibility version only after ALL members are upgraded and validated.
 
 ---
 
@@ -1150,18 +1167,17 @@ Expected: kernel name has no "uek" and is not between 6.19 and 7.0.13; the avx c
 
 ```bash
 hostnamectl set-hostname hqmngoom01
-cat >> /etc/hosts <<'EOF'
-10.10.21.30     hqmngodb01
-10.10.21.31     hqmngodb02
-10.10.21.32     hqmngodb03
-10.10.21.40     hqmngoom01
-EOF
+for e in "10.10.21.30     hqmngodb01" "10.10.21.31     hqmngodb02" "10.10.21.32     hqmngodb03" \
+         "10.10.22.30     drmngodb01" "10.10.22.31     drmngodb02" "10.10.22.32     drmngodb03" \
+         "10.10.21.40     hqmngoom01"; do
+  grep -qw "${e##* }" /etc/hosts || echo "$e" >> /etc/hosts
+done
 getent hosts hqmngoom01
 systemctl enable --now chronyd
 chronyc tracking
 ```
 
-getent must return the server's real IP, not 127.0.0.1 or 127.0.1.1. Also add the line 10.10.21.40 hqmngoom01 to /etc/hosts on hqmngodb01, 02 and 03, and use a lowercase name.
+getent must return the server's real IP, not 127.0.0.1 or 127.0.1.1. Also add the line 10.10.21.40 hqmngoom01 to /etc/hosts on every DB node (hqmngodb01-03 and drmngodb01-03), and use a lowercase name.
 
 ### 25.4 SELinux and firewall (OM web port 8080 only)
 
@@ -1549,8 +1565,8 @@ Monitor Ops Manager itself: if hqmngoom01 is down, alerts stop. Add an external 
 RULES
 
 1. Patch in a maintenance window, one server at a time.
-2. Never patch the primary first: secondaries first, then rs.stepDown(60), then the old primary.
-3. All three replica-set nodes must end on the SAME MongoDB version.
+2. Never patch the primary first: DR nodes first, then the HQ secondaries, then rs.stepDown(60), then the old primary.
+3. All replica-set nodes (HQ and DR) must end on the SAME MongoDB version.
 4. Keep Oracle Linux on RHCK; never let UEK become the default kernel.
 5. Take a backup before you start (STEP 17) and confirm the set is healthy before AND after each node.
 6. MongoDB and Ops Manager packages are excluded in /etc/dnf/dnf.conf, so a normal dnf update never upgrades them by accident.
@@ -1565,11 +1581,11 @@ rs.printSecondaryReplicationInfo()
 db.version()
 ```
 
-Proceed only if: 1 PRIMARY + 2 SECONDARY, health 1 everywhere, lag a few seconds at most.
+Proceed only if: 1 PRIMARY + 2 SECONDARY (+ 3 DR SECONDARY with the DR site), health 1 everywhere, lag a few seconds at most (DR lag can be higher over the WAN, but must be steady and small).
 
 ### 31.2 OS patching - replica set nodes (RHCK kernel)
 
-Order: hqmngodb03, then hqmngodb02, then hqmngodb01 (step it down first). On the node being patched:
+Order: drmngodb03, drmngodb02, drmngodb01 (DR nodes have priority 0 and never become primary), then hqmngodb03, then hqmngodb02, then hqmngodb01 (step it down first). Patch only ONE voting member at a time: with 5 voters the set tolerates 2 failures, but a DR node down during an HQ outage leaves fewer spares. On the node being patched:
 
 ```bash
 dnf check-update
@@ -1611,7 +1627,7 @@ systemctl restart mongod
 mongod --version
 ```
 
-Do it secondary by secondary; the primary last after rs.stepDown(60). After each node run 31.1. At the end all three must report the same db.version() and the feature compatibility version must be unchanged:
+Do it secondary by secondary in the order of 31.2 (DR nodes, HQ secondaries); the primary last after rs.stepDown(60). After each node run 31.1. At the end all nodes must report the same db.version() and the feature compatibility version must be unchanged:
 
 **(mongosh)**
 
@@ -1701,4 +1717,409 @@ firewall-cmd --list-ports
 tail -n 20 /var/log/mongodb/mongod.log
 ```
 
-Run on every server. Then confirm in mongosh: 1 PRIMARY + 2 SECONDARY, equal versions, no lag; in OM: all hosts green, no open alerts, test email works.
+Run on every server (HQ, DR and hqmngoom01). Then confirm in mongosh: 1 PRIMARY + 2 SECONDARY (+ 3 DR SECONDARY), equal versions, no lag; in OM: all hosts green, no open alerts, test email works.
+
+---
+
+## STEP 32 - Add the DR site (drmngodb01-03) to prd-rst
+
+**Run on:** `see each block`
+
+The DR site joins the SAME replica set prd-rst as three more members. Data replicates from HQ to DR continuously over the WAN; nothing else (no second replica set, no extra tool) is needed.
+
+Design:
+
+```
+Member       Site  _id  priority  votes  role
+hqmngodb01   HQ    0    2         1      preferred primary
+hqmngodb02   HQ    1    1         1      secondary
+hqmngodb03   HQ    2    1         1      secondary
+drmngodb01   DR    3    0         1      DR secondary - never primary automatically
+drmngodb02   DR    4    0         1      DR secondary - never primary automatically
+drmngodb03   DR    5    0         0      DR secondary - non-voting
+
+Voting members: 5 (odd) -> majority 3. HQ alone holds 3 votes.
+```
+
+Why this design:
+
+1. HQ keeps the majority (3 of 5 votes). If the DR site or the WAN link fails, HQ keeps its primary and the applications notice nothing.
+2. priority 0 on DR: a DR node never becomes primary automatically, so the applications never end up writing across the WAN by accident. Making DR primary is a decision you take (32.10 and 32.11).
+3. Two DR votes: the set survives the loss of ANY 2 members. Example: 2 HQ nodes down -> 1 HQ + 2 DR = 3 votes -> the remaining HQ node is still elected primary.
+4. drmngodb03 is non-voting because the number of voters must stay odd: 6 voters need a majority of 4 and tolerate no more failures than 5 voters.
+5. If the WHOLE HQ site is lost, DR has only 2 of 5 votes, so there is NO automatic primary at DR. You activate DR with a forced reconfiguration (32.11). This is the price of never having a split-brain.
+
+Write concern: with 5 voters writeMajorityCount is 3. While all three HQ nodes are up, w:majority is satisfied by HQ alone and DR adds no write latency. If one HQ node is down, every majority write waits for a DR node, so its latency includes the WAN round-trip.
+
+Recovery point: because HQ alone is a majority, a write acknowledged with w:majority can exist only at HQ. If HQ is lost, everything not yet replicated to DR is lost: the RPO equals the DR replication lag. Keep the replication-lag alert (STEP 30) active for the DR nodes.
+
+### 32.1 Prerequisites and checks
+
+1. Network: 27017/tcp open in BOTH directions between every HQ node and every DR node (members of a replica set all talk to each other), and DR nodes -> hqmngoom01:8080 for the MongoDB Agent. STEP 4 opens 27017 inbound on every node; any firewall between the sites must allow it too.
+2. Name resolution: every node resolves every member (STEP 2 already contains the DR names; on a set built before, run the STEP 2 hosts loop again on every HQ node and on hqmngoom01 - it adds only the missing lines).
+3. Same OS settings and the SAME MongoDB version (8.3.13) as HQ.
+4. Oplog window: the initial sync of a DR node over the WAN, and any later WAN outage, must fit inside the oplog window, otherwise the DR node falls off the oplog and needs a full resync. Check it on the PRIMARY:
+
+**(mongosh)**
+
+```javascript
+rs.printReplicationInfo()
+```
+
+"log length start to end" is the oplog window. It must be longer than the expected initial sync time PLUS the longest WAN outage you want to survive without a resync. If it is too short, enlarge the oplog (32.2).
+
+Network check from each HQ node to each DR node and back (nc comes from the nmap-ncat package):
+
+```bash
+for n in hqmngodb01 hqmngodb02 hqmngodb03 drmngodb01 drmngodb02 drmngodb03; do nc -zv -w 3 $n 27017; done
+```
+
+### 32.2 (Optional) Enlarge the oplog
+
+Run on EVERY member, one at a time, connected directly to it as root (mongosh-root). The size is in MB. /data is only 9.9 GB: the oplog lives on /data, so size it with care and extend the volume first if needed. Example: 4 GB.
+
+**(mongosh)**
+
+```javascript
+db.adminCommand({ replSetResizeOplog: 1, size: 4096 })
+db.getSiblingDB("local").oplog.rs.stats().maxSize / 1024 / 1024
+```
+
+Then set the same value in /etc/mongod.conf (oplogSizeMB: 4096) on every node, so the file matches reality. oplogSizeMB is used only when the oplog is first created; a DR node that starts empty creates its oplog with this size.
+
+### 32.3 Prepare the DR nodes
+
+**Run on:** `DR NODES`
+
+Build the three DR nodes exactly like the HQ nodes:
+
+- STEP 1 - kernel (RHCK, AVX) and the /data volume
+- STEP 2 - hosts file (all six DB names) and hostname: drmngodb01 / drmngodb02 / drmngodb03, and time sync
+- STEP 3 - SELinux
+- STEP 4 - firewall, port 27017
+- STEP 5 - kernel tuning, THP, limits, reboot
+- STEP 6 - dependency packages
+- STEP 7 / 8 - install MongoDB 8.3.13 (the SAME version as HQ) and the dnf exclude line
+- STEP 9 - directories
+
+Also add hqmngoom01 to /etc/hosts on the DR nodes (STEP 25.3).
+
+Do NOT run STEP 10 (a new key file) on the DR nodes: they must use the key file of HQ (32.4). Do NOT run STEP 14 or STEP 15 at DR: the replica set and the users already exist and replicate to DR automatically.
+
+### 32.4 Copy the key file from HQ to the DR nodes
+
+**Run on:** `hqmngodb01 ONLY`
+
+All members of prd-rst must have the IDENTICAL key file. If SSH between the sites is not allowed, copy the file by your approved method.
+
+```bash
+for n in drmngodb01 drmngodb02 drmngodb03; do scp /data/mongodb/keyfile/mongo-keyfile root@$n:/data/mongodb/keyfile/mongo-keyfile; done
+```
+
+Then on the DR NODES fix ownership and permissions (STEP 11) and confirm the file is identical to HQ (the checksum must be the same on all six nodes):
+
+```bash
+chown mongod:mongod /data/mongodb/keyfile/mongo-keyfile
+chmod 400 /data/mongodb/keyfile/mongo-keyfile
+sha256sum /data/mongodb/keyfile/mongo-keyfile
+```
+
+### 32.5 mongod.conf and first start of the DR nodes
+
+**Run on:** `PER NODE (DR)`
+
+Use the STEP 12 block unchanged except MY_IP: drmngodb01 -> 10.10.22.30, drmngodb02 -> 10.10.22.31, drmngodb03 -> 10.10.22.32. replSetName stays prd-rst and the keyFile path stays the same. If you enlarged the oplog in 32.2, set oplogSizeMB to the same value before the first start.
+
+The data directory must be EMPTY before the first start, so the node does a clean initial sync from the set. This must print 0:
+
+```bash
+ls -A /data/mongodb/data | wc -l
+```
+
+Then run STEP 13 (allocator drop-in, enable and start mongod) and STEP 16 (log rotation and aliases).
+
+The node starts and waits to be added: rs.status() on it reports NotYetInitialized, which is normal. Do NOT run rs.initiate() on a DR node: that would create a second, separate replica set.
+
+### 32.6 Tag the HQ members and add the DR members (non-voting first)
+
+**Run on:** `the PRIMARY (mongosh as root)`
+
+Connect to the replica set as root:
+
+```bash
+mongosh "mongodb://hqmngodb01:27017,hqmngodb02:27017,hqmngodb03:27017/?replicaSet=prd-rst&authSource=admin" --username root
+```
+
+If the set was initiated before STEP 14 contained the tags, tag the HQ members now (safe to run again):
+
+**(mongosh)**
+
+```javascript
+cfg = rs.conf()
+cfg.members.forEach(m => { if (m.host.startsWith("hqmngodb")) m.tags = { dc: "HQ" } })
+rs.reconfig(cfg)
+```
+
+Add the DR members ONE AT A TIME, as non-voting with priority 0. A non-voting member does not change the majority, so adding it has no effect on HQ while it syncs. One at a time keeps the initial sync traffic on the WAN under control.
+
+**(mongosh)**
+
+```javascript
+rs.add({ _id: 3, host: "drmngodb01:27017", priority: 0, votes: 0, tags: { dc: "DR" } })
+```
+
+Watch it: the new member goes STARTUP2 (initial sync) -> SECONDARY. The time depends on the data size and the WAN bandwidth.
+
+**(mongosh)**
+
+```javascript
+rs.status().members.map(m => [m.name, m.stateStr, m.health])
+```
+
+Initial sync progress, run on the DR node itself (mongosh-root on drmngodb01):
+
+**(mongosh)**
+
+```javascript
+db.adminCommand({ replSetGetStatus: 1, initialSync: 1 }).initialSyncStatus
+```
+
+When drmngodb01 is SECONDARY, add the next one, and when that one is SECONDARY, the last one:
+
+**(mongosh)**
+
+```javascript
+rs.add({ _id: 4, host: "drmngodb02:27017", priority: 0, votes: 0, tags: { dc: "DR" } })
+```
+
+**(mongosh)**
+
+```javascript
+rs.add({ _id: 5, host: "drmngodb03:27017", priority: 0, votes: 0, tags: { dc: "DR" } })
+```
+
+By default secondaries may sync from other secondaries (chaining), so drmngodb02 and drmngodb03 often choose drmngodb01 as their sync source. That is good: the data crosses the WAN only once.
+
+### 32.7 Give the votes to drmngodb01 and drmngodb02
+
+**Run on:** `the PRIMARY (mongosh as root)`
+
+A single reconfiguration may add only ONE voting member, so the votes are given in two steps. The helper below changes the votes and priority of one member; define it once in each new mongosh session (32.10 - 32.12 use it too).
+
+**(mongosh)**
+
+```javascript
+function setMember(host, votes, priority) {
+  const cfg = rs.conf()
+  const m = cfg.members.find(x => x.host === host)
+  m.votes = votes
+  m.priority = priority
+  return rs.reconfig(cfg)
+}
+```
+
+Give the votes (rs.reconfig waits until a majority has the new configuration before it returns):
+
+**(mongosh)**
+
+```javascript
+setMember("drmngodb01:27017", 1, 0)
+setMember("drmngodb02:27017", 1, 0)
+```
+
+drmngodb03 stays non-voting (votes 0, priority 0).
+
+### 32.8 Validate the replica set with the DR site
+
+**Run on:** `any node (mongosh as root)`
+
+Configuration - must match the design table at the top of this step:
+
+**(mongosh)**
+
+```javascript
+rs.conf().members.map(m => [m._id, m.host, m.priority, m.votes, JSON.stringify(m.tags)])
+```
+
+State, voting counts and sync sources. Expected: 1 PRIMARY + 5 SECONDARY, health 1; votingMembersCount 5, majorityVoteCount 3, writeMajorityCount 3.
+
+**(mongosh)**
+
+```javascript
+rs.status().members.map(m => [m.name, m.stateStr, m.health, m.syncSourceHost])
+(() => { const s = rs.status(); return { votingMembersCount: s.votingMembersCount, majorityVoteCount: s.majorityVoteCount, writeMajorityCount: s.writeMajorityCount }; })()
+```
+
+Replication lag of every secondary, DR included (should be steady and small):
+
+**(mongosh)**
+
+```javascript
+rs.printSecondaryReplicationInfo()
+```
+
+Version (expected 8.3.13) - run db.version() on each DR node with mongosh-root.
+
+### 32.9 Update the backup, the applications and Ops Manager
+
+1. Backup (STEP 17): the URI must contain readPreferenceTags=dc:HQ&readPreferenceTags= so the dump reads from an HQ secondary and never pulls the data across the WAN. If your /usr/local/bin/mongo_backup.sh was created before this change, replace its URI line with the one in STEP 17.
+2. Applications (STEP 23): add the DR nodes to the seed list, so the same connection string works after a DR activation.
+3. Ops Manager:
+   - Network: on hqmngoom01 run nc -zv drmngodb01 27017 (and 02, 03); on each DR node run nc -zv hqmngoom01 8080.
+   - If you installed the MongoDB Agent on every DB node (STEP 29.3), install it on drmngodb01, 02 and 03 the same way (Deployment > Agents > Downloads & Settings shows the commands).
+   - Ops Manager discovers the new members of prd-rst by itself. Check that the deployment shows 1 PRIMARY and 5 SECONDARY.
+   - Log rotation (STEP 29.4): once each DR node shows in OM, apply 29.4 on it (one node at a time).
+4. Patching (STEP 31) now includes the DR nodes: DR first, then the HQ secondaries, the primary last.
+
+### 32.10 Planned switchover to DR (DR drill, both sites up)
+
+**Run on:** `see each block`
+
+Use this to test that the applications work from DR, or for planned HQ maintenance. Nothing is lost: the set stays healthy and HQ keeps voting.
+
+Step 1 - on the PRIMARY (hqmngodb01), define setMember (32.7) and give drmngodb01 the highest priority. After it has caught up, drmngodb01 takes the primary role (priority 3 > 2), usually within seconds.
+
+**(mongosh)**
+
+```javascript
+setMember("drmngodb01:27017", 1, 3)
+```
+
+Step 2 - verify (any node). drmngodb01 must be PRIMARY. Writes now cross the WAN from HQ applications, so expect higher latency.
+
+**(mongosh)**
+
+```javascript
+rs.status().members.map(m => [m.name, m.stateStr])
+```
+
+Switch back. A primary cannot set its own priority to 0 (it would become unelectable), so lower it in two moves:
+
+Step 3 - on drmngodb01 (the current primary), lower its priority to 1. hqmngodb01 (priority 2) takes the primary role back.
+
+**(mongosh)**
+
+```javascript
+setMember("drmngodb01:27017", 1, 1)
+```
+
+Step 4 - on hqmngodb01 (the primary again), restore priority 0 for drmngodb01, then verify with 32.8.
+
+**(mongosh)**
+
+```javascript
+setMember("drmngodb01:27017", 1, 0)
+```
+
+### 32.11 DR activation - the HQ site is lost (forced reconfiguration)
+
+**Run on:** `see each block`
+
+Use this ONLY when the HQ site is really down and will not come back soon. It is a management decision: writes that reached HQ but not DR are lost (see "Recovery point" at the top of this step).
+
+Step 1 - make sure HQ cannot come back by itself. In the old configuration HQ holds 3 of 5 votes, so if the HQ nodes return while DR is primary, HQ elects its own primary: a SPLIT-BRAIN with two primaries. If the HQ servers are reachable at all, stop and disable mongod on them:
+
+```bash
+systemctl disable --now mongod
+```
+
+If they are not reachable, tell the HQ team: before the HQ servers or the WAN link come back, mongod must be disabled on hqmngodb01, 02 and 03.
+
+Step 2 - on drmngodb01, connect DIRECTLY as root and confirm there is no primary:
+
+```bash
+mongosh --host drmngodb01 --port 27017 --username root --authenticationDatabase admin
+```
+
+**(mongosh)**
+
+```javascript
+rs.status().members.map(m => [m.name, m.stateStr, m.health])
+```
+
+Step 3 - forced reconfiguration: keep only the DR members and make all three voting, drmngodb01 preferred.
+
+**(mongosh)**
+
+```javascript
+cfg = rs.conf()
+cfg.members = cfg.members.filter(m => m.host.startsWith("drmngodb"))
+cfg.members.forEach(m => { m.votes = 1; m.priority = (m.host === "drmngodb01:27017") ? 2 : 1 })
+rs.reconfig(cfg, { force: true })
+```
+
+Within about 10-12 seconds drmngodb01 becomes PRIMARY. The set now has 3 voters (majority 2), all at DR, and tolerates 1 more failure.
+
+**(mongosh)**
+
+```javascript
+rs.status().members.map(m => [m.name, m.stateStr, m.health])
+db.hello().primary
+```
+
+Step 4 - applications: with the DR nodes in their seed list (STEP 23) they find the new primary by themselves. Applications with only HQ hosts in the connection string must be changed.
+
+Step 5 - backups: until failback, run the STEP 17 script on a DR node (for example drmngodb02) with readPreferenceTags=dc:DR and the DR hosts in the URI, writing to storage at DR.
+
+### 32.12 Failback - bring HQ back after a DR activation
+
+**Run on:** `see each block`
+
+The HQ nodes come back as NEW members with an empty data directory: they may hold writes that never reached DR, and those writes are discarded. If you must examine them, copy /data/mongodb/data of the old HQ primary to separate storage BEFORE wiping it, and ask MongoDB Support.
+
+Step 1 - on each HQ node (mongod still disabled from 32.11): wipe the data and start mongod. DESTRUCTIVE - run only on the HQ nodes, never on a DR member.
+
+```bash
+systemctl stop mongod
+rm -rf /data/mongodb/data/*
+systemctl enable --now mongod
+```
+
+Step 2 - on the DR PRIMARY (drmngodb01, mongosh as root): add the HQ nodes one at a time as non-voting, waiting for SECONDARY each time (as in 32.6).
+
+**(mongosh)**
+
+```javascript
+rs.add({ _id: 0, host: "hqmngodb01:27017", priority: 0, votes: 0, tags: { dc: "HQ" } })
+rs.status().members.map(m => [m.name, m.stateStr, m.health])
+```
+
+```javascript
+rs.add({ _id: 1, host: "hqmngodb02:27017", priority: 0, votes: 0, tags: { dc: "HQ" } })
+```
+
+```javascript
+rs.add({ _id: 2, host: "hqmngodb03:27017", priority: 0, votes: 0, tags: { dc: "HQ" } })
+```
+
+Step 3 - restore the votes, one voting change per reconfiguration (define setMember from 32.7 first). The order keeps the number of voters at 4 or 5, never 6:
+
+**(mongosh)**
+
+```javascript
+setMember("hqmngodb01:27017", 1, 0)
+setMember("hqmngodb02:27017", 1, 0)
+setMember("drmngodb03:27017", 0, 0)
+setMember("hqmngodb03:27017", 1, 0)
+```
+
+Step 4 - move the primary back to HQ. Priority changes are not voting changes, so they go in one reconfiguration. drmngodb01 keeps priority 1 for now (the primary cannot make itself unelectable); hqmngodb01 (priority 2) takes over once it has caught up.
+
+**(mongosh)**
+
+```javascript
+cfg = rs.conf()
+prio = { "hqmngodb01:27017": 2, "hqmngodb02:27017": 1, "hqmngodb03:27017": 1, "drmngodb01:27017": 1, "drmngodb02:27017": 0, "drmngodb03:27017": 0 }
+cfg.members.forEach(m => { m.priority = prio[m.host] })
+rs.reconfig(cfg)
+```
+
+Step 5 - on hqmngodb01 (the primary again): give drmngodb01 priority 0, so the configuration matches the design table again.
+
+**(mongosh)**
+
+```javascript
+setMember("drmngodb01:27017", 1, 0)
+```
+
+Step 6 - validate with 32.8, switch the backup back to HQ (STEP 17) and confirm in Ops Manager that all six hosts are green.
